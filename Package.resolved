@@ -1,0 +1,70 @@
+{
+  "object": {
+    "pins": [
+      {
+        "package": "sebbu-ts-ds",
+        "repositoryURL": "https://github.com/MarSe32m/sebbu-ts-ds.git",
+        "state": {
+          "branch": "main",
+          "revision": "ca7faf46401c2077c5d9cdab1cabd8ffc978abb1",
+          "version": null
+        }
+      },
+      {
+        "package": "swift-atomics",
+        "repositoryURL": "https://github.com/apple/swift-atomics.git",
+        "state": {
+          "branch": "main",
+          "revision": "ca13c9bd7b71c26218dc0bdd65ba869abd5a78af",
+          "version": null
+        }
+      },
+      {
+        "package": "swift-collections",
+        "repositoryURL": "https://github.com/apple/swift-collections.git",
+        "state": {
+          "branch": "main",
+          "revision": "22dc81b89fc1dee9d52c6a3fcfa1fcd08f184ae8",
+          "version": null
+        }
+      },
+      {
+        "package": "swift-nio",
+        "repositoryURL": "https://github.com/apple/swift-nio.git",
+        "state": {
+          "branch": "main",
+          "revision": "acbd69711395f5697b12beb4cf089929c9dbf3b4",
+          "version": null
+        }
+      },
+      {
+        "package": "swift-nio-ssl",
+        "repositoryURL": "https://github.com/apple/swift-nio-ssl.git",
+        "state": {
+          "branch": null,
+          "revision": "2b329e37e9dd34fb382655181a680261d58cbbf1",
+          "version": "2.17.1"
+        }
+      },
+      {
+        "package": "swift-nio-transport-services",
+        "repositoryURL": "https://github.com/apple/swift-nio-transport-services.git",
+        "state": {
+          "branch": "main",
+          "revision": "e7f5278a26442dc46783ba7e063643d524e414a0",
+          "version": null
+        }
+      },
+      {
+        "package": "websocket-kit",
+        "repositoryURL": "https://github.com/vapor/websocket-kit.git",
+        "state": {
+          "branch": "main",
+          "revision": "ff8fbce837ef01a93d49c6fb49a72be0f150dac7",
+          "version": null
+        }
+      }
+    ]
+  },
+  "version": 1
+}
