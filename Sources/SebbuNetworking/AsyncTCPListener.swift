@@ -4,7 +4,7 @@
 //
 //  Created by Sebastian Toivonen on 3.12.2021.
 //
-#if !os(Windows)
+#if canImport(NIO)
 import NIOCore
 
 public final class AsyncTCPListener {

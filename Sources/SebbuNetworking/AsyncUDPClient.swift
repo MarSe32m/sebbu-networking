@@ -5,5 +5,5 @@
 //  Created by Sebastian Toivonen on 27.12.2021.
 //
 
-import NIO
-
+#if canImport(NIO)
+#endif

@@ -6,7 +6,7 @@
 //
 
 //TODO: Remove #if when NIO is available on Windows
-#if !os(Windows)
+#if canImport(NIO)
 import NIO
 
 public protocol UDPServerProtocol: AnyObject {

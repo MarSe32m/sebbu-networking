@@ -4,7 +4,7 @@
 //
 //  Created by Sebastian Toivonen on 16.6.2021.
 //
-#if !os(Windows)
+#if canImport(NIO)
 import NIO
 #if canImport(NIOTransportServices) && canImport(Network)
 import NIOTransportServices
