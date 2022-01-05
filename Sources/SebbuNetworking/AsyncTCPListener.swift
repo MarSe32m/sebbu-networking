@@ -59,4 +59,20 @@ extension AsyncTCPListener: TCPServerProtocol {
         }
     }
 }
+
+extension AsyncTCPListener: AsyncSequence {
+    public typealias Element = AsyncTCPClient
+    
+    public struct Iterator: AsyncIteratorProtocol {
+        internal let listener: AsyncTCPListener
+        
+        public mutating func next() async -> AsyncTCPClient? {
+            await listener.listen()
+        }
+    }
+    
+    public func makeAsyncIterator() -> Iterator {
+        Iterator(listener: self)
+    }
+}
 #endif
