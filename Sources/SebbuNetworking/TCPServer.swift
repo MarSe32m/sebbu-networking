@@ -8,6 +8,7 @@
 import NIO
 #if canImport(NIOTransportServices) && canImport(Network)
 import NIOTransportServices
+import Network
 #endif
 
 public protocol TCPServerProtocol: AnyObject {
@@ -26,14 +27,13 @@ public final class TCPServer {
         ipv6channel?.localAddress?.port
     }
     
-    
-    //TODO: TLS Support
     public let eventLoopGroup: EventLoopGroup
     
     public weak var delegate: TCPServerProtocol?
     
     private var isSharedEventLoopGroup = false
     
+    //TODO: TLS Support
     public init(eventLoopGroup: EventLoopGroup) {
         #if canImport(NIOTransportServices) && canImport(Network)
         assert(eventLoopGroup is NIOTSEventLoopGroup, "On Apple platforms, the event loop group should be a NIOTSEventLoopGroup")
