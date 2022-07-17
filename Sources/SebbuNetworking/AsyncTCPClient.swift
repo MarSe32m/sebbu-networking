@@ -54,8 +54,8 @@ public final class AsyncTCPClient: @unchecked Sendable {
         //TODO: NIOTS support
         let channel = try await ClientBootstrap(group: on)
             .connectTimeout(.seconds(10))
-            .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
-            .channelOption(ChannelOptions.socket(IPPROTO_TCP, TCP_NODELAY), value: 1)
+            .channelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
+            .channelOption(ChannelOptions.socketOption(.tcp_nodelay), value: 1)
             .channelOption(ChannelOptions.maxMessagesPerRead, value: 2)
             .channelOption(ChannelOptions.recvAllocator, value: AdaptiveRecvByteBufferAllocator(minimum: 64, initial: configuration.maxBytesPerRead, maximum: configuration.maxBytesPerRead))
             .channelInitializer { channel in
