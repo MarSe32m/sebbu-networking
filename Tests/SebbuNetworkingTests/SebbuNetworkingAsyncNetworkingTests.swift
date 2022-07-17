@@ -9,28 +9,64 @@ import XCTest
 import NIO
 import SebbuNetworking
 
-private let testData = (0..<1024 * 128).map { _ in UInt8.random(in: .min ... .max) }
-private let testCount = 150
-
 final class SebbuKitAsyncNetworkingTests: XCTestCase {
-    func testAsyncTCPClientServerConnection() async throws {
-        let listener = AsyncTCPListener(numberOfThreads: System.coreCount)
-        try await listener.startIPv4(port: 8888)
+    private let testData = (0..<1024 * 16).map { _ in UInt8.random(in: .min ... .max) }
+    private let testCount = 100
+    
+    func testAsyncTCPServerConnectionAndDisconnection() async throws {
+        let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
+        let server = try await AsyncTCPServer.bind(host: "0", port: 7777, on: eventLoopGroup)
+        var asyncTCPClient = try await AsyncTCPClient.connect(host: "localhost", port: 7777, on: eventLoopGroup)
+        var serverClient: AsyncTCPClient!
+        for try await client in server {
+            serverClient = client
+            break
+        }
+        serverClient.send([1,2,3,4,5])
+        var data = await asyncTCPClient.receive()
+        XCTAssertFalse(data.isEmpty)
+        
+        asyncTCPClient.send([1,2,3,4])
+        var otherData = await serverClient.receive()
+        XCTAssertFalse(otherData.isEmpty)
+        
+        for _ in 0..<1_000 {
+            try await asyncTCPClient.disconnect()
+            serverClient = nil
+            asyncTCPClient = try await AsyncTCPClient.connect(host: "localhost", port: 7777, on: eventLoopGroup)
+            for try await client in server {
+                serverClient = client
+                break
+            }
+            
+            serverClient.send([1,2,3,2,3])
+            data = await asyncTCPClient.receive()
+            XCTAssertFalse(data.isEmpty)
+            
+            asyncTCPClient.send([1,2,3,4,5,6])
+            otherData = await serverClient.receive()
+            XCTAssertFalse(otherData.isEmpty)
+        }
+        
+        try await asyncTCPClient.disconnect()
+        try await server.close()
+        try await eventLoopGroup.shutdownGracefully()
+    }
+    
+    func testAsyncTCPMultipleClientServerConnection() async throws {
+        let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
+        let server = try await AsyncTCPServer.bind(host: "0", port: 8888, on: eventLoopGroup)
         var clientTasks = [Task<Int, Error>]()
 
         var totalSum = 0
-
         for i in 0..<testCount {
             clientTasks.append(Task {
-                let client = AsyncTCPClient()
-                try await client.connect(host: "localhost", port: 8888)
+                let client = try await AsyncTCPClient.connect(host: "localhost", port: 8888, on: eventLoopGroup)
                 for _ in 0..<testCount {
                     client.send(testData)
-                    guard let data = await client.receive() else {
-                        XCTFail("Failed to receive pong message")
-                        fatalError("Failed...")
-                    }
-                    XCTAssert(data.count != 0)
+                    let data = await client.receive()
+                    
+                    XCTAssert(data.count != 0, "Failed to receive data from server...")
                 }
                 try await Task.sleep(nanoseconds: 1_000_000_000)
                 try await client.disconnect()
@@ -40,14 +76,17 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
         }
 
         for _ in 0..<testCount {
-            guard let client = await listener.listen() else {
-                XCTFail("Failed to listen for all clients...")
-                fatalError("Failed...")
+            var client: AsyncTCPClient!
+            for try await _client in server {
+                client = _client
+                break
             }
-            Task {
+            XCTAssertNotNil(client)
+            Task { [client] in
                 var totalDataReceived = 0
-                while let data = await client.receive(count: testData.count) {
-                    client.send([1,2,3,4,5,6])
+                while true {
+                    let data = await client!.receive(count: testData.count)
+                    client!.send([1,2,3,4,5,6])
                     totalDataReceived += data.count
                 }
                 XCTAssert(totalDataReceived == testCount * testData.count)
@@ -57,32 +96,27 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
         for task in clientTasks {
             totalSum -= try await task.value
         }
-        try await listener.shutdown()
+        try await server.close()
         XCTAssert(totalSum == 0)
-        let lastClient = await listener.listen()
-        XCTAssert(lastClient == nil)
+        try await eventLoopGroup.shutdownGracefully()
     }
     
     func testAsyncTCPClientServerConnectionChunkedReads() async throws {
-        let listener = AsyncTCPListener(numberOfThreads: System.coreCount)
-        try await listener.startIPv4(port: 8889)
+        let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
+        let server = try await AsyncTCPServer.bind(host: "0", port: 8889, on: eventLoopGroup)
         var clientTasks = [Task<Int, Error>]()
 
         var totalSum = 0
 
         for i in 0..<testCount {
             clientTasks.append(Task {
-                let client = AsyncTCPClient()
-                try await client.connect(host: "localhost", port: 8889)
+                let client = try await AsyncTCPClient.connect(host: "localhost", port: 8889, on: eventLoopGroup)
                 for _ in 0..<testCount {
                     client.send(testData)
                 }
                 
                 for _ in 0..<testCount {
-                    guard let data = await client.receive(count: testData.count) else {
-                        XCTFail("Failed to receive pong message")
-                        fatalError("Failed...")
-                    }
+                    let data = await client.receive(count: testData.count)
                     XCTAssert(data == testData)
                 }
                 
@@ -93,59 +127,58 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
         }
 
         for _ in 0..<testCount {
-            guard let client = await listener.listen() else {
-                XCTFail("Failed to listen for all clients...")
-                fatalError("Failed...")
+            var client: AsyncTCPClient!
+            for try await _client in server {
+                client = _client
+                break
             }
-            Task {
+            XCTAssertNotNil(client)
+            Task { [client] in
                 for _ in 0..<testCount {
-                    guard let data = await client.receive(count: testData.count) else {
-                        XCTFail("Failed to receive ping message")
-                        return
-                    }
-                    client.send(data)
+                    let data = await client!.receive(count: testData.count)
+                    client!.send(data)
                 }
             }
         }
-
+        
         for task in clientTasks {
             totalSum -= try await task.value
         }
-        try await listener.shutdown()
+        try await server.close()
         XCTAssert(totalSum == 0)
-        let lastClient = await listener.listen()
-        XCTAssert(lastClient == nil)
+        try await eventLoopGroup.shutdownGracefully()
     }
     
     func testConnection() async throws {
-        let listener = AsyncTCPListener(numberOfThreads: 1)
-        try await listener.startIPv4(port: 8890)
-        let client1 = AsyncTCPClient()
-        Task {
-            try await client1.connect(host: "localhost", port: 8890)
+        let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
+        let server = try await AsyncTCPServer.bind(host: "0", port: 8890, on: eventLoopGroup)
+        let client1 = try await AsyncTCPClient.connect(host: "localhost", port: 8890, on: eventLoopGroup)
+        var client2: AsyncTCPClient!
+        for try await _client in server {
+            client2 = _client
+            break
         }
-        guard let client2 = await listener.listen() else {
-            XCTFail("Failed to listen for a connection...")
-            return
-        }
+        XCTAssertNotNil(client2)
+        
         client1.send([1,2,3,4,5,6])
-        var recvData = await client2.receive(count: 6)!
+        var recvData = await client2.receive(count: 6)
         XCTAssert(recvData.count == 6)
-        Task {
-            for _ in 0..<1024 * 1024 {
-                client2.send([UInt8](repeating: 0, count: 1024))
+        
+        Task.detached { [client2] in
+            for _ in 0..<1024 * 128 {
+                client2!.send([UInt8](repeating: 0, count: 1024))
             }
         }
+        
         for _ in 0..<1024 {
-            recvData = await client1.receive(count: 1024 * 1024)!
-            XCTAssert(recvData.count == 1024 * 1024)
+            recvData = await client1.receive(count: 1024 * 128)
+            XCTAssert(recvData.count == 1024 * 128)
         }
-        try await Task.sleep(nanoseconds: 10_000_000_000)
+        
         try await client1.disconnect()
-        try await client2.disconnect()
-        try await listener.shutdown()
-        let lastClient = await listener.listen()
-        XCTAssert(lastClient == nil)
+        //try await client2.disconnect()
+        try await server.close()
+        try await eventLoopGroup.shutdownGracefully()
     }
 }
 #endif

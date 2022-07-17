@@ -163,6 +163,9 @@ public final class UDPServer {
         DatagramBootstrap(group: group)
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_RCVBUF), value: .init(recvBufferSize))
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_SNDBUF), value: .init(sendBufferSize))
+        //TODO: add datagramVectorReadMessageCount channel option?
+            //.channelOption(ChannelOptions.datagramVectorReadMessageCount, value: 128)
+            .channelOption(ChannelOptions.maxMessagesPerRead, value: 128)
             .channelInitializer { channel in
                 channel.pipeline.addHandler(self.inboundHandler)
             }
