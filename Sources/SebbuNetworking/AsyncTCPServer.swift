@@ -38,7 +38,7 @@ public final class AsyncTCPServer: @unchecked Sendable {
                 let asyncTCPClient = AsyncTCPClient(channel: channel, handler: asyncTCPHandler, config: .init())
                 let asyncTCPClientServerHandler = AsyncTCPServerClientHandler(client: asyncTCPClient, stream: tcpClientContinuation)
                 _ = channel.pipeline.addHandler(asyncTCPHandler)
-                return channel.pipeline.addHandler(asyncTCPClientServerHandler, name: "sebbu.nio.server-client-handler", position: .first)
+                return channel.pipeline.addHandler(asyncTCPClientServerHandler, position: .first)
                     
             }
             .bind(host: host, port: port).get()
@@ -60,7 +60,7 @@ extension AsyncTCPServer: AsyncSequence {
     }
 }
 
-final class AsyncTCPServerClientHandler: ChannelInboundHandler {
+final class AsyncTCPServerClientHandler: ChannelInboundHandler, RemovableChannelHandler {
     typealias InboundIn = NIOAny
     
     let client: AsyncTCPClient
@@ -72,8 +72,14 @@ final class AsyncTCPServerClientHandler: ChannelInboundHandler {
     }
     
     func channelActive(context: ChannelHandlerContext) {
-        stream.yield(client)
-        context.pipeline.removeHandler(name: "sebbu.nio.server-client-handler", promise: nil)
+        context.pipeline.removeHandler(self).whenComplete { result in
+            switch result {
+            case .success:
+                self.stream.yield(self.client)
+            case .failure(let error):
+                self.stream.finish(throwing: error)
+            }
+        }
     }
 }
 #endif

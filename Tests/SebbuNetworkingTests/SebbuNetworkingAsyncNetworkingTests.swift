@@ -8,14 +8,15 @@
 import XCTest
 import NIO
 import SebbuNetworking
+import Atomics
 
 final class SebbuKitAsyncNetworkingTests: XCTestCase {
     private let testData = (0..<1024 * 16).map { _ in UInt8.random(in: .min ... .max) }
-    private let testCount = 100
+    private let testCount = 50
     
     func testAsyncTCPServerConnectionAndDisconnection() async throws {
         let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
-        let server = try await AsyncTCPServer.bind(host: "::", port: 7777, on: eventLoopGroup)
+        let server = try await AsyncTCPServer.bind(host: "localhost", port: 7777, on: eventLoopGroup)
         var asyncTCPClient = try await AsyncTCPClient.connect(host: "localhost", port: 7777, on: eventLoopGroup)
         var serverClient: AsyncTCPClient!
         for try await client in server {
@@ -23,11 +24,11 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
             break
         }
         serverClient.send([1,2,3,4,5])
-        var data = await asyncTCPClient.receive()
+        var data = try await asyncTCPClient.receive()
         XCTAssertFalse(data.isEmpty)
         
         asyncTCPClient.send([1,2,3,4])
-        var otherData = await serverClient.receive()
+        var otherData = try await serverClient.receive()
         XCTAssertFalse(otherData.isEmpty)
         
         for _ in 0..<1_000 {
@@ -40,11 +41,11 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
             }
             
             serverClient.send([1,2,3,2,3])
-            data = await asyncTCPClient.receive()
+            data = try await asyncTCPClient.receive()
             XCTAssertFalse(data.isEmpty)
             
             asyncTCPClient.send([1,2,3,4,5,6])
-            otherData = await serverClient.receive()
+            otherData = try await serverClient.receive()
             XCTAssertFalse(otherData.isEmpty)
         }
         
@@ -55,7 +56,7 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
     
     func testAsyncTCPMultipleClientServerConnection() async throws {
         let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
-        let server = try await AsyncTCPServer.bind(host: "::", port: 8888, on: eventLoopGroup)
+        let server = try await AsyncTCPServer.bind(host: "localhost", port: 8888, on: eventLoopGroup)
         var clientTasks = [Task<Int, Error>]()
 
         var totalSum = 0
@@ -64,11 +65,10 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
                 let client = try await AsyncTCPClient.connect(host: "localhost", port: 8888, on: eventLoopGroup)
                 for _ in 0..<testCount {
                     client.send(testData)
-                    let data = await client.receive()
+                    let data = try await client.receive()
                     
                     XCTAssert(data.count != 0, "Failed to receive data from server...")
                 }
-                try await Task.sleep(nanoseconds: 1_000_000_000)
                 try await client.disconnect()
                 return i
             })
@@ -85,7 +85,7 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
             Task { [client] in
                 var totalDataReceived = 0
                 while true {
-                    let data = await client!.receive(count: testData.count)
+                    let data = try await client!.receive(count: testData.count)
                     client!.send([1,2,3,4,5,6])
                     totalDataReceived += data.count
                 }
@@ -96,6 +96,7 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
         for task in clientTasks {
             totalSum -= try await task.value
         }
+        
         try await server.close()
         XCTAssert(totalSum == 0)
         try await eventLoopGroup.shutdownGracefully()
@@ -103,27 +104,33 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
     
     func testAsyncTCPClientServerConnectionChunkedReads() async throws {
         let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
-        let server = try await AsyncTCPServer.bind(host: "::", port: 8889, on: eventLoopGroup)
+        let server = try await AsyncTCPServer.bind(host: "localhost", port: 8889, on: eventLoopGroup)
         var clientTasks = [Task<Int, Error>]()
 
         var totalSum = 0
 
+        var clients: [AsyncTCPClient] = []
         for i in 0..<testCount {
+            let client = try await AsyncTCPClient.connect(host: "localhost", port: 8889, on: eventLoopGroup)
+            clients.append(client)
+            totalSum += i
+        }
+        
+        for (i, client) in clients.enumerated() {
             clientTasks.append(Task {
-                let client = try await AsyncTCPClient.connect(host: "localhost", port: 8889, on: eventLoopGroup)
                 for _ in 0..<testCount {
                     client.send(testData)
                 }
                 
                 for _ in 0..<testCount {
-                    let data = await client.receive(count: testData.count)
+                    let data = try await client.receive(count: testData.count)
                     XCTAssert(data == testData)
                 }
                 
                 try await client.disconnect()
                 return i
+                
             })
-            totalSum += i
         }
 
         for _ in 0..<testCount {
@@ -135,7 +142,7 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
             XCTAssertNotNil(client)
             Task { [client] in
                 for _ in 0..<testCount {
-                    let data = await client!.receive(count: testData.count)
+                    let data = try await client!.receive(count: testData.count)
                     client!.send(data)
                 }
             }
@@ -151,7 +158,7 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
     
     func testAsyncTCPConnection() async throws {
         let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
-        let server = try await AsyncTCPServer.bind(host: "::", port: 8890, on: eventLoopGroup)
+        let server = try await AsyncTCPServer.bind(host: "localhost", port: 8890, on: eventLoopGroup)
         let client1 = try await AsyncTCPClient.connect(host: "localhost", port: 8890, on: eventLoopGroup)
         var client2: AsyncTCPClient!
         for try await _client in server {
@@ -161,7 +168,7 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
         XCTAssertNotNil(client2)
         
         client1.send([1,2,3,4,5,6])
-        var recvData = await client2.receive(count: 6)
+        var recvData = try await client2.receive(count: 6)
         XCTAssert(recvData.count == 6)
         
         Task.detached { [client2] in
@@ -171,20 +178,64 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
         }
         
         for _ in 0..<1024 {
-            recvData = await client1.receive(count: 1024 * 128)
+            recvData = try await client1.receive(count: 1024 * 128)
             XCTAssert(recvData.count == 1024 * 128)
         }
         
-        try await client1.disconnect()
-        //try await client2.disconnect()
+        Task.detached { [client2] in
+            for _ in 0..<1023 {
+                client2!.send([UInt8](repeating: 0, count: 1024))
+            }
+            try await client2!.reliableSend([UInt8](repeating: 0, count: 1024))
+            try await client2!.disconnect()
+        }
+        
+        var totalData = 1024 * 1024
+        
+        do {
+            for try await data in client1 {
+                totalData -= data.count
+            }
+        } catch {
+            XCTAssert(totalData == 0)
+        }
+        
+        let lastData = client1.tryReceive()
+        XCTAssert(lastData.isEmpty)
+        
+        // No need to disconnect since the server client already did
+        //try await client1.disconnect()
         try await server.close()
         try await eventLoopGroup.shutdownGracefully()
     }
     
     func testAsyncUDPEchoServer() async throws {
-        let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        let asyncUDPClient = try await AsyncUDPClient.create(on: eventLoopGroup)
-        let _ = asyncUDPClient
+        let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 2)
+        let client = try await AsyncUDPClient.create(host: "0", port: 0, configuration: .init(), on: eventLoopGroup)
+        let server = try await AsyncUDPClient.create(host: "0", port: 25565, configuration: .init(), on: eventLoopGroup)
+        
+        let messagesReceived = ManagedAtomic<Int>(0)
+        
+        Task.detached { [client] in
+            let data = ByteBufferAllocator().buffer(bytes: [UInt8](repeating: 0, count: 1400))
+            let address = try SocketAddress(ipAddress: "127.0.0.1", port: 25565)
+            let envelope = AddressedEnvelope<ByteBuffer>(remoteAddress: address, data: data)
+            while messagesReceived.load(ordering: .relaxed) < 20_000 {
+                client.send(envelope)
+            }
+        }
+        
+        var totalData = 0
+        for try await envelope in server {
+            let msgRecvd = messagesReceived.wrappingIncrementThenLoad(ordering: .relaxed)
+            totalData += envelope.data.readableBytes
+            if msgRecvd == 20_000 { break }
+        }
+        
+        XCTAssert(totalData == messagesReceived.load(ordering: .relaxed) * 1400)
+        
+        try await client.close()
+        try await server.close()
         try await eventLoopGroup.shutdownGracefully()
     }
 }

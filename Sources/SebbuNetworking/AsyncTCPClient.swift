@@ -9,6 +9,7 @@
 import NIO
 import SebbuTSDS
 import Atomics
+import Dispatch
 
 /// An async TCPClient
 /// - Note: Only one task can receive messages and one task can send messages.
@@ -18,7 +19,7 @@ public final class AsyncTCPClient: @unchecked Sendable {
         public var readBufferSizeHint: Int
         public var maxBytesPerRead: Int
         
-        public init(readBufferSizeHint: Int = 2048, maxBytesPerRead: Int = 1024) {
+        public init(readBufferSizeHint: Int = 1024 * 1024, maxBytesPerRead: Int = 65536) {
             precondition(readBufferSizeHint >= 2048, "The read buffer size hint must be atleast 2048 bytes.")
             precondition(readBufferSizeHint >= maxBytesPerRead, "The read buffer size must be more than the allowed max bytes per read.")
             self.readBufferSizeHint = readBufferSizeHint
@@ -61,6 +62,7 @@ public final class AsyncTCPClient: @unchecked Sendable {
             .channelInitializer { channel in
                 channel.pipeline.addHandler(handler)
             }.connect(host: host, port: port).get()
+        
         return AsyncTCPClient(channel: channel, handler: handler, config: configuration)
     }
     
@@ -73,22 +75,22 @@ public final class AsyncTCPClient: @unchecked Sendable {
     }
     
     @inlinable
-    public final func receive() async -> [UInt8] {
-        channel.read()
-        let data = await handler.receive()
+    public final func receive() async throws -> [UInt8] {
+        handler.requestRead(channel: channel)
+        let data = try await handler.receive()
         return data
     }
     
     //TODO: This is quite inefficient... See if we can make this better...
     // Maybe a circular buffer of some sorts? Or a deque?
     @inlinable
-    public final func receive(count: Int) async -> [UInt8] {
+    public final func receive(count: Int) async throws -> [UInt8] {
         // Fill it with the overflow
         var accumulatedData = overflow
         overflow = []
         // Read as long as we have less the desired amount of data
         while accumulatedData.count < count {
-            await accumulatedData.append(contentsOf: receive())
+            try await accumulatedData.append(contentsOf: receive())
             // If the data was empty after the read, then receive() returned
             // empty data which means that the channel is closed
             if accumulatedData.isEmpty {
@@ -110,7 +112,7 @@ public final class AsyncTCPClient: @unchecked Sendable {
     
     @inlinable
     public final func tryReceive() -> [UInt8] {
-        channel.read()
+        handler.requestRead(channel: channel)
         let data = handler.tryReceive()
         return data
     }
@@ -120,6 +122,15 @@ public final class AsyncTCPClient: @unchecked Sendable {
     public final func send(_ data: [UInt8]) {
         write(data)
         flush()
+    }
+    
+    /// Send data to the peer and for it to be flushed {
+    @inline(__always)
+    public final func reliableSend(_ data: [UInt8]) async throws {
+        sendBuffer.clear()
+        sendBuffer.reserveCapacity(data.count)
+        sendBuffer.writeBytes(data)
+        try await channel.writeAndFlush(sendBuffer)
     }
     
     /// Write data to the peer but don't flush i.e. send it on the wire yet
@@ -154,7 +165,9 @@ internal final class AsyncTCPHandler: ChannelDuplexHandler {
     
     /// - 0: No continuation, might have data
     /// - 1: Continuation set
-    /// - 2...UInt64.max: Undetermined / Highly likely that data is available
+    /// - 2: Error has occurred
+    /// - 3: Channel is closed
+    /// - 14...UInt64.max: Undetermined / Highly likely that data is available
     @usableFromInline
     let continuationState: ManagedAtomic<UInt64> = ManagedAtomic(0)
 
@@ -166,12 +179,42 @@ internal final class AsyncTCPHandler: ChannelDuplexHandler {
     
     /// The sequence number of the current read
     /// This is used to distinguish from subsequent reads
-    /// to compare to the continuationState. We start from 3
-    /// so that we can wrap around at UInt64.max back to 3 so that we never
-    /// accidentally wrap to 0 or 1. See channelRead(context:, data:).
+    /// to compare to the continuationState. We start from 15
+    /// so that by increments of 16, we can wrap around at UInt64.max back to 15 so that we never
+    /// accidentally wrap to 0...14. See channelRead(context:, data:).
     @usableFromInline
-    var readSequence: UInt64 = 3
+    var readSequence: UInt64 = 15
 
+    @usableFromInline
+    var error: Error?
+    
+    @usableFromInline
+    enum ContinuationState: UInt64, AtomicValue {
+        case noContinuation = 0
+        case continuationSet = 1
+        case errorHasOccurred = 2
+        case channelClosed = 3
+        case _reserved4 = 4
+        case _reserved5 = 5
+        case _reserved6 = 6
+        case _reserved7 = 7
+        case _reserved8 = 8
+        case _reserved9 = 9
+        case _reserved10 = 10
+        case _reserved11 = 11
+        case _reserved12 = 12
+        case _reserved13 = 13
+        case _reserved14 = 14
+        case dataAvailable = 15
+        
+        @inline(__always)
+        @inlinable
+        static func construct(_ value: UInt64) -> ContinuationState {
+            if value >= 15 { return .dataAvailable }
+            else { return .init(rawValue: value)! }
+        }
+    }
+    
     public init(maxBytes: Int) {
         self.maxBytes = maxBytes
     }
@@ -180,6 +223,12 @@ internal final class AsyncTCPHandler: ChannelDuplexHandler {
     public func read(context: ChannelHandlerContext) {
         if byteCount.load(ordering: .relaxed) >= maxBytes { return }
         context.read()
+    }
+    
+    public func channelReadComplete(context: ChannelHandlerContext) {
+        if byteCount.load(ordering: .relaxed) < maxBytes {
+            context.read()
+        }
     }
     
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -197,33 +246,87 @@ internal final class AsyncTCPHandler: ChannelDuplexHandler {
             byteCount.wrappingIncrement(by: readBytes.count, ordering: .acquiringAndReleasing)
 
             // Try to change the continuationState to current readSequence
-            let (exchanged, state) = continuationState.compareExchange(expected: 0, desired: readSequence, successOrdering: .relaxed, failureOrdering: .acquiring)
-            // By adding 4 we will wrap around to 3 when we read UInt64.max since 2^64 - 1 = (2^2)^32 - 1 = 4^32 - 1 cong -1 cong 3 mod 4
-            // In other words, UInt64.max % 4 == 3, so UInt64.max = q * 4 + 3 for some q. If we start from 3 and add 4 to it q times,
-            // then we will reach UInt64.max. At that point adding an additional 4 will wrap us back to 3 and thus we avoid accidentally
-            // making the readSequence 0 or 1.
+            let (exchanged, state) = continuationState.compareExchange(expected: ContinuationState.noContinuation.rawValue,
+                                                                       desired: readSequence,
+                                                                       successOrdering: .relaxed,
+                                                                       failureOrdering: .acquiring)
+            // By adding 16 we will wrap around to 15 when we read UInt64.max since 2^64 - 1 = (2^4)^16 - 1 = 16^16 - 1 cong -1 cong 15 mod 16
+            // In other words, UInt64.max % 16 == 15, so UInt64.max = q * 16 + 15 for some q. If we start from 15 and add 16 to it q times,
+            // then we will reach UInt64.max. At that point adding an additional 16 will wrap us back to 15 and thus we avoid accidentally
+            // making the readSequence 0...14
             // Why so complicated? So that we avoid an if statement :) I know, over engineering at it's finest...
-            readSequence &+= 4
+            readSequence &+= 16
             if exchanged { return }
+            
+            let _continuationState = ContinuationState.construct(state)
+            
+            // Check if the channel is closed
+            if _continuationState == .channelClosed {
+                return
+            }
+            
             // If the receiver is waiting for more data, then try to dequeue a block
             // If the buffer is empty, it means that from the last enqueue, the receiver
             // has already dequeued it and now wants more data. In that case we have to wait
             // for more data, i.e. we can't do anything more right now
-            if state == 1, let bytes = buffer.dequeue() {
+            if _continuationState == .continuationSet, let bytes = buffer.dequeue() {
                 let continuation = continuation
                 self.continuation = nil
                 byteCount.wrappingDecrement(by: bytes.count, ordering: .relaxed)
                 continuationState.store(0, ordering: .releasing)
                 continuation?.resume(returning: bytes)
-                context.read()
             }
         }
     }
-
+    
+    public func channelActive(context: ChannelHandlerContext) {
+        context.fireChannelActive()
+    }
+    
+    public func channelInactive(context: ChannelHandlerContext) {
+        let (exchanged, _state) = continuationState.compareExchange(expected: ContinuationState.noContinuation.rawValue,
+                                                                    desired: ContinuationState.channelClosed.rawValue,
+                                                                    ordering: .relaxed)
+        if exchanged { return }
+        let state = ContinuationState.construct(_state)
+        if state == .continuationSet {
+            let continuation = continuation
+            self.continuation = nil
+            continuationState.store(3, ordering: .relaxed)
+            continuation?.resume(throwing: NIOCore.ChannelError.alreadyClosed)
+        } else if state == .dataAvailable {
+            continuationState.store(ContinuationState.channelClosed.rawValue, ordering: .relaxed)
+        }
+        context.fireChannelInactive()
+    }
+    
+    public func errorCaught(context: ChannelHandlerContext, error: Error) {
+        self.error = error
+        let (exchaged, _state) = continuationState.compareExchange(expected: ContinuationState.noContinuation.rawValue,
+                                                                   desired: ContinuationState.errorHasOccurred.rawValue,
+                                                                   ordering: .relaxed)
+        if exchaged { return }
+        let state = ContinuationState.construct(_state)
+        if state == .continuationSet {
+            let continuation = continuation
+            self.continuation = nil
+            continuationState.store(2, ordering: .relaxed)
+            continuation?.resume(throwing: error)
+        } else if state == .dataAvailable {
+            continuationState.store(2, ordering: .relaxed)
+        }
+    }
+    
     @inlinable
-    internal func receive() async -> [UInt8] {
+    internal func requestRead(channel: Channel) {
+        if byteCount.load(ordering: .relaxed) < maxBytes {
+            channel.read()
+        }
+    }
+    
+    @inlinable
+    internal func receive() async throws -> [UInt8] {
         //TODO: Do this inside a cancellation handler? How do we handle it without locks?
-
         // Try to dequeue some bytes, if successful, decrement the byteCount and return the data.
         // If no data is present, we will need to wait for some
         if let bytes = buffer.dequeue() {
@@ -231,46 +334,54 @@ internal final class AsyncTCPHandler: ChannelDuplexHandler {
             return bytes
         }
         
-        do {
-            return try await withUnsafeThrowingContinuation { continuation in
-                self.continuation = continuation
-                var currentContinuationState: UInt64 = 0
-                var exchanged = false
-                // This while loop will loop at max twice.
-                // If there really isn't any data, then the compareExchange will
-                // succeed and we will wait for data. If the continuation state
-                // says that there might be data (i.e. the compareExchange fails)
-                // then let's see if we can get it since it can happen that we already took
-                // it above on another call to this method. If it has, great, we will return that
-                // if not, then we try again, and if it fails again then we can be sure
-                // that there is data since no other people are allowed to receive at the same time
-                // otherwise the precondition would be hit.
-                while true {
-                    // Try to set the state as 1, i.e. we have a receiver waiting for data
-                    (exchanged, currentContinuationState) = continuationState.compareExchange(expected: currentContinuationState, desired: 1, successOrdering: .relaxed, failureOrdering: .acquiring)
-                    // If success, just wait for the data
-                    if exchanged { return }
-                    // If we failed to exchange, the state should be 3 or above since only one receiver is allowed at once
-                    precondition(currentContinuationState > 2, "Only one receiver allowed!")
-
-                    // Check that there are bytes to read
-                    // If not, it means that we yoinked them above by some other call to receive
-                    // and in that case, we will try again to change the state to 1, i.e. we have a receive waiting for data.
-                    // If the above exchange fails again, we know (from the precondition) that there must be data now, so the
-                    // while loop actually runs a maximum of two times, i.e. only two compareExchanges
-                    if let bytes = buffer.dequeue() {
-                        byteCount.wrappingDecrement(by: bytes.count, ordering: .relaxed)
-                        self.continuation = nil
-                        continuationState.store(0, ordering: .releasing)
-                        continuation.resume(returning: bytes)
-                        return
+        return try await withUnsafeThrowingContinuation { continuation in
+            self.continuation = continuation
+            var currentContinuationState: UInt64 = 0
+            var exchanged = false
+            // This while loop will loop at max twice.
+            // If there really isn't any data, then the compareExchange will
+            // succeed and we will wait for data. If the continuation state
+            // says that there might be data (i.e. the compareExchange fails)
+            // then let's see if we can get it since it can happen that we already took
+            // it above on another call to this method. If it has, great, we will return that
+            // if not, then we try again, and if it fails again then we can be sure
+            // that there is data since no other people are allowed to receive at the same time
+            // otherwise the precondition would be hit.
+            while true {
+                // Try to set the state as 1, i.e. we have a receiver waiting for data
+                (exchanged, currentContinuationState) = continuationState.compareExchange(expected: currentContinuationState,
+                                                                                          desired: ContinuationState.continuationSet.rawValue,
+                                                                                          successOrdering: .relaxed,
+                                                                                          failureOrdering: .acquiring)
+                // If success, just wait for the data
+                if exchanged { return }
+                // If we failed to exchange, the state should be 14 or above since only one receiver is allowed at once
+                precondition(currentContinuationState != 1, "Only one receiver allowed!")
+                let state = ContinuationState.construct(currentContinuationState)
+                // Check that there are bytes to read
+                // If not, it means that we yoinked them above by some other call to receive
+                // and in that case, we will try again to change the state to 1, i.e. we have a receive waiting for data.
+                // If the above exchange fails again, we know (from the precondition) that there must be data now, so the
+                // while loop actually runs a maximum of two times, i.e. only two compareExchanges
+                if let bytes = buffer.dequeue() {
+                    byteCount.wrappingDecrement(by: bytes.count, ordering: .relaxed)
+                    self.continuation = nil
+                    continuationState.store(0, ordering: .releasing)
+                    continuation.resume(returning: bytes)
+                    return
+                } else if state == .errorHasOccurred {
+                    self.continuation = nil
+                    guard let error = self.error else {
+                        fatalError("Error was nil while the state was in error state (i.e. 2)")
                     }
+                    continuation.resume(throwing: error)
+                    return
+                } else if state == .channelClosed {
+                    self.continuation = nil
+                    continuation.resume(throwing: NIOCore.ChannelError.alreadyClosed)
+                    return
                 }
             }
-        } catch let error {
-            print("TODO: Handle error:", error)
-            //TODO: How do we handle error?
-            return []
         }
     }
     
@@ -282,6 +393,22 @@ internal final class AsyncTCPHandler: ChannelDuplexHandler {
             return bytes
         }
         return []
+    }
+}
+
+extension AsyncTCPClient: AsyncSequence {
+    public typealias Element = [UInt8]
+    
+    public struct AsyncIterator: AsyncIteratorProtocol {
+        let tcpClient: AsyncTCPClient
+        
+        public func next() async throws -> [UInt8]? {
+            try await tcpClient.receive()
+        }
+    }
+    
+    public func makeAsyncIterator() -> AsyncIterator {
+        AsyncIterator(tcpClient: self)
     }
 }
 #endif
