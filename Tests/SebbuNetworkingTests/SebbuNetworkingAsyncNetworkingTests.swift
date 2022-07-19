@@ -192,7 +192,7 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
             for _ in 0..<1023 {
                 client2!.send([UInt8](repeating: 0, count: 1024))
             }
-            try await client2!.reliableSend([UInt8](repeating: 0, count: 1024))
+            try await client2!.sendBlocking([UInt8](repeating: 0, count: 1024))
             try await client2!.disconnect()
         }
         
@@ -218,7 +218,7 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
     func testAsyncUDPEchoServer() async throws {
         let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 2)
         let client = try await AsyncUDPClient.create(host: "0", port: 0, configuration: .init(), on: eventLoopGroup)
-        let server = try await AsyncUDPClient.create(host: "0", port: 25565, configuration: .init(), on: eventLoopGroup)
+        let server = try await AsyncUDPServer.create(host: "0", port: 25565, configuration: .init(), on: eventLoopGroup)
         
         let messagesReceived = ManagedAtomic<Int>(0)
         

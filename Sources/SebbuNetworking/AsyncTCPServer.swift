@@ -29,8 +29,8 @@ public final class AsyncTCPServer: @unchecked Sendable {
         self.clientStream = clientStream
     }
     
-    //TODO: Pass in the config for the accepted clients
-    public static func bind(host: String, port: Int, on: EventLoopGroup) async throws -> AsyncTCPServer {
+    /// Bind the server to a host and port
+    public static func bind(host: String, port: Int, clientConfiguration: AsyncTCPClient.Configuration = .init(), on: EventLoopGroup) async throws -> AsyncTCPServer {
         var tcpClientContinuation: AsyncThrowingStream<AsyncTCPClient, Error>.Continuation!
         let stream = AsyncThrowingStream<AsyncTCPClient, Error>(bufferingPolicy: .unbounded) { continuation in
             tcpClientContinuation = continuation
@@ -40,12 +40,12 @@ public final class AsyncTCPServer: @unchecked Sendable {
             .serverChannelOption(ChannelOptions.backlog, value: 256)
             .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
-            .childChannelOption(ChannelOptions.maxMessagesPerRead, value: 16)
+            .childChannelOption(ChannelOptions.maxMessagesPerRead, value: numericCast(clientConfiguration.maxMessagesPerRead))
             .childChannelOption(ChannelOptions.recvAllocator, value: AdaptiveRecvByteBufferAllocator())
             .childChannelInitializer { channel in
                 //TODO: Pass in the config...
-                let asyncTCPHandler = AsyncTCPHandler(bufferSize: 16)
-                let asyncTCPClient = AsyncTCPClient(channel: channel, handler: asyncTCPHandler, config: .init())
+                let asyncTCPHandler = AsyncTCPHandler(bufferSize: clientConfiguration.bufferSize)
+                let asyncTCPClient = AsyncTCPClient(channel: channel, handler: asyncTCPHandler, config: clientConfiguration)
                 let asyncTCPClientServerHandler = AsyncTCPServerClientHandler(client: asyncTCPClient, stream: tcpClientContinuation)
                 _ = channel.pipeline.addHandler(asyncTCPHandler)
                 return channel.pipeline.addHandler(asyncTCPClientServerHandler, position: .first)

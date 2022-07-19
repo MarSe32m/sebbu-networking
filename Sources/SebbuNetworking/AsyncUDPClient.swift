@@ -84,6 +84,12 @@ public final class AsyncUDPClient: @unchecked Sendable {
     
     @inline(__always)
     @inlinable
+    public final func sendBlocking(_ envelope: AddressedEnvelope<ByteBuffer>) async throws {
+        try await channel.writeAndFlush(envelope)
+    }
+    
+    @inline(__always)
+    @inlinable
     public final func write(_ envelope: AddressedEnvelope<ByteBuffer>) {
         channel.write(envelope, promise: nil)
     }

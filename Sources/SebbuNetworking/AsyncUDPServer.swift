@@ -1,51 +1,31 @@
 //
-//  AsyncTCPClient.swift
+//  AsyncUDPServer.swift
 //  
 //
-//  Created by Sebastian Toivonen on 3.12.2021.
+//  Created by Sebastian Toivonen on 19.7.2022.
 //
 
-#if canImport(NIO) && canImport(SebbuTSDS) && canImport(Atomics)
+#if canImport(NIO)
 import NIO
 import SebbuTSDS
 import Atomics
-import Dispatch
 
-/// An async TCPClient
-/// - Note: Only one task can receive messages and one task can send messages.
-/// To have multiple readers / writers, you have to manage that yourself.
-public final class AsyncTCPClient: @unchecked Sendable {
+public final class AsyncUDPServer: @unchecked Sendable {
     public struct Configuration {
-        /// The number of read messages to be buffered
-        public var bufferSize: Int
+        public var maxDatagrams: Int
+        /// The internal buffer cache in datagrams! Not bytes!
+        public var bufferCacheSize: Int
         
-        /// The number of messages read per event loop read call
         public var maxMessagesPerRead: Int
         
-        public init(bufferSize: Int = 16, maxMessagesPerRead: Int = 16) {
-            precondition(bufferSize > 0, "The buffer must be more than zero")
-            precondition(maxMessagesPerRead > 0, "The maximum messages per read must be more than zero")
-            self.bufferSize = bufferSize
+        public init(maxDatagrams: Int = .max, bufferedCacheSize: Int = 2048, maxMessagesPerRead: Int = 16) {
+            self.maxDatagrams = maxDatagrams
+            self.bufferCacheSize = bufferedCacheSize
             self.maxMessagesPerRead = maxMessagesPerRead
         }
     }
     
-    @usableFromInline
-    internal let config: Configuration
-    
-    @usableFromInline
-    internal let handler: AsyncTCPHandler
-    
-    @usableFromInline
-    internal var channel: Channel
-    
-    @usableFromInline
-    internal var sendBuffer: ByteBuffer
-
-    @usableFromInline
-    internal var overflow: ByteBuffer
-    
-    /// The remote address of this client
+    /// The remote address of this client (should be nil)
     public var remoteAddress: SocketAddress? {
         channel.remoteAddress
     }
@@ -56,149 +36,112 @@ public final class AsyncTCPClient: @unchecked Sendable {
     }
     
     @usableFromInline
-    internal init(channel: Channel, handler: AsyncTCPHandler, config: Configuration = .init()) {
+    internal let channel: Channel
+    
+    @usableFromInline
+    internal let handler: AsyncUDPServerHandler
+    
+    internal init(channel: Channel, handler: AsyncUDPServerHandler) {
         self.channel = channel
         self.handler = handler
-        self.config = config
-        self.sendBuffer = channel.allocator.buffer(capacity: 128)
-        self.overflow = channel.allocator.buffer(capacity: 128)
     }
     
-    /// Connect to a server
-    public static func connect(host: String, port: Int, configuration: Configuration = .init(), on: EventLoopGroup) async throws -> AsyncTCPClient {
-        let handler = AsyncTCPHandler(bufferSize: configuration.bufferSize)
-        //TODO: NIOTS support
-        let channel = try await ClientBootstrap(group: on)
-            .connectTimeout(.seconds(10))
-            .channelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
-            .channelOption(ChannelOptions.socketOption(.tcp_nodelay), value: 1)
+    public static func create(host: String = "::", port: Int = 0, configuration: Configuration = .init(), on: EventLoopGroup) async throws -> AsyncUDPServer {
+        let handler = AsyncUDPServerHandler(maxDatagrams: configuration.maxDatagrams,
+                                      bufferCacheSize: configuration.bufferCacheSize)
+        let channel = try await DatagramBootstrap(group: on)
+            .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
+        //TODO: rcv and snd buffers configurable?
+            //.channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_RCVBUF), value: .init(25 * 1024 * 1024))
+            //.channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_SNDBUF), value: .init(sendBufferSize))
             .channelOption(ChannelOptions.maxMessagesPerRead, value: numericCast(configuration.maxMessagesPerRead))
-            .channelOption(ChannelOptions.recvAllocator, value: AdaptiveRecvByteBufferAllocator())
+        // Only Linux and eventually Windows support vectored reads
+        #if os(Linux) || os(Windows)
+        //TODO: Tweak the read message count value, maybe it should be configurable?
+            .channelOption(ChannelOptions.datagramVectorReadMessageCount, value: 64)
+            .channelOption(ChannelOptions.recvAllocator, value: FixedSizeRecvByteBufferAllocator(capacity: 64 * 2048))
+        #endif
             .channelInitializer { channel in
                 channel.pipeline.addHandler(handler)
-            }.connect(host: host, port: port).get()
-        
-        return AsyncTCPClient(channel: channel, handler: handler, config: configuration)
+            }.bind(host: host, port: port).get()
+        return AsyncUDPServer(channel: channel, handler: handler)
     }
     
-    //TODO: func reconnect(host: String, port: Int,...)?
-    
-    /// Disconnect from a server
     @inline(__always)
-    public final func disconnect() async throws {
+    @inlinable
+    public final func close() async throws {
         try await channel.close()
     }
     
     @inlinable
-    public final func receive() async throws -> ByteBuffer {
+    public final func receive() async throws -> AddressedEnvelope<ByteBuffer> {
         handler.requestRead(channel: channel)
-        let data = try await handler.receive()
-        return data
+        return try await handler.receive()
     }
-    
-    //TODO: This is quite inefficient... See if we can make this better...
-    // Maybe a circular buffer of some sorts? Or a deque?
-    @inlinable
-    public final func receive(count: Int) async throws -> ByteBuffer {
-        // Fill it with the overflow
-        var accumulatedBytes = overflow
-        overflow.clear()
-        accumulatedBytes.reserveCapacity(count)
-        // Read as long as we have less the desired amount of data
-        while accumulatedBytes.readableBytes < count {
-            var bytes = try await receive()
-            accumulatedBytes.writeBuffer(&bytes)
-            
-            // We shouldn't get zero bytes from a read right?
-            assert(accumulatedBytes.readableBytes > 0)
-        }
         
-        // If we have the desired count, let's return it!
-        if accumulatedBytes.readableBytes == count {
-            return accumulatedBytes
-        }
-        
-        // At this point we know that we have too much data,
-        // so cut of the end and store it in the overflow buffer
-        // and return the beginning of the accumulated data
-        overflow = accumulatedBytes.getSlice(at: count, length: accumulatedBytes.readableBytes - count)!
-        return accumulatedBytes.getSlice(at: 0, length: count)!
-    }
-    
     @inlinable
-    public final func tryReceive() -> ByteBuffer? {
+    public final func tryReceive() -> AddressedEnvelope<ByteBuffer>? {
         handler.requestRead(channel: channel)
-        let data = handler.tryReceive()
-        return data
+        return handler.tryReceive()
     }
     
-    /// Send bytes to the peer. This means that we write the data and flush it
     @inline(__always)
-    public final func send(_ bytes: ByteBuffer) {
-        write(bytes)
+    @inlinable
+    public final func send(_ envelope: AddressedEnvelope<ByteBuffer>) {
+        write(envelope)
         flush()
     }
     
-    /// Send bytes to the peer and wait for it to be flushed
     @inline(__always)
-    public final func sendBlocking(_ bytes: ByteBuffer) async throws {
-        try await channel.writeAndFlush(bytes)
-    }
-    
-    /// Write data to the peer but don't flush i.e. send it on the wire yet
-    @inline(__always)
-    public final func write(_ bytes: ByteBuffer) {
-        channel.write(bytes, promise: nil)
-    }
-    
-    /// Send data to the peer. This means that we write the data and flush it
-    @inline(__always)
-    public final func send(_ data: [UInt8]) {
-        write(data)
-        flush()
-    }
-    
-    /// Send data to the peer and wait for it to be flushed
     @inlinable
-    public final func sendBlocking(_ data: [UInt8]) async throws {
-        sendBuffer.clear()
-        sendBuffer.reserveCapacity(data.count)
-        sendBuffer.writeBytes(data)
-        try await channel.writeAndFlush(sendBuffer)
+    public final func sendBlocking(_ envelope: AddressedEnvelope<ByteBuffer>) async throws {
+        try await channel.writeAndFlush(envelope)
     }
     
-    /// Write data to the peer but don't flush i.e. send it on the wire yet
-    @inlinable
-    public final func write(_ data: [UInt8]) {
-        sendBuffer.clear()
-        sendBuffer.reserveCapacity(data.count)
-        sendBuffer.writeBytes(data)
-        channel.write(sendBuffer, promise: nil)
-    }
-    
-    /// Flush the previously written data to the wire
     @inline(__always)
+    @inlinable
+    public final func write(_ envelope: AddressedEnvelope<ByteBuffer>) {
+        channel.write(envelope, promise: nil)
+    }
+    
+    @inline(__always)
+    @inlinable
     public final func flush() {
         channel.flush()
     }
 }
 
-/// This is fundamentally a Single Writer Single Reader TCPHandler with asynchronous waiting
-/// capabilities
-@usableFromInline
-internal final class AsyncTCPHandler: ChannelDuplexHandler {
-    public typealias InboundIn = ByteBuffer
-    public typealias OutboundIn = ByteBuffer
+extension AsyncUDPServer: AsyncSequence {
+    public typealias Element = AddressedEnvelope<ByteBuffer>
     
-    /// Underlying queue to store the read data.
-    @usableFromInline
-    let buffer: SPSCQueue<ByteBuffer> = SPSCQueue(cacheSize: 1024)
+    public struct AsyncIterator: AsyncIteratorProtocol {
+        let udpServer: AsyncUDPServer
+        
+        public func next() async throws -> AddressedEnvelope<ByteBuffer>? {
+            try await udpServer.receive()
+        }
+    }
+    
+    public func makeAsyncIterator() -> AsyncIterator {
+        AsyncIterator(udpServer: self)
+    }
+}
 
+@usableFromInline
+internal final class AsyncUDPServerHandler: ChannelDuplexHandler {
     @usableFromInline
-    let bufferedMessages = ManagedAtomic<Int>(0)
+    typealias InboundIn = AddressedEnvelope<ByteBuffer>
+    @usableFromInline
+    typealias OutboundIn = AddressedEnvelope<ByteBuffer>
     
     @usableFromInline
-    let maxBufferSize: Int
+    let buffer: SPSCQueue<AddressedEnvelope<ByteBuffer>>
+    
+    @usableFromInline
+    let bufferedDatagrams: ManagedAtomic<Int> = ManagedAtomic<Int>(0)
+    
+    @usableFromInline
+    let maxDatagrams: Int
     
     /// - 0: No continuation, might have data
     /// - 1: Continuation set
@@ -207,9 +150,10 @@ internal final class AsyncTCPHandler: ChannelDuplexHandler {
     /// - 14...UInt64.max: Undetermined / Highly likely that data is available
     @usableFromInline
     let continuationState: ManagedAtomic<UInt64> = ManagedAtomic(0)
-
+    
+    
     @usableFromInline
-    var continuation: UnsafeContinuation<ByteBuffer, Error>?
+    var continuation: UnsafeContinuation<AddressedEnvelope<ByteBuffer>, Error>?
     
     /// The sequence number of the current read
     /// This is used to distinguish from subsequent reads
@@ -218,7 +162,7 @@ internal final class AsyncTCPHandler: ChannelDuplexHandler {
     /// accidentally wrap to 0...14. See channelRead(context:, data:).
     @usableFromInline
     var readSequence: UInt64 = 15
-
+    
     @usableFromInline
     var error: Error?
     
@@ -249,35 +193,31 @@ internal final class AsyncTCPHandler: ChannelDuplexHandler {
         }
     }
     
-    public init(bufferSize: Int) {
-        self.maxBufferSize = bufferSize
+    public init(maxDatagrams: Int, bufferCacheSize: Int) {
+        self.buffer = SPSCQueue(cacheSize: bufferCacheSize)
+        self.maxDatagrams = maxDatagrams
     }
     
     //MARK: ChannelHandler methods
     public func read(context: ChannelHandlerContext) {
-        if bufferedMessages.load(ordering: .relaxed) >= maxBufferSize { return }
+        if bufferedDatagrams.load(ordering: .relaxed) >= maxDatagrams { return }
         context.read()
     }
     
     public func channelReadComplete(context: ChannelHandlerContext) {
-        if bufferedMessages.load(ordering: .relaxed) < maxBufferSize {
-            context.read()
-        }
+        if bufferedDatagrams.load(ordering: .relaxed) >= maxDatagrams { return }
+        context.read()
     }
     
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let bytes = unwrapInboundIn(data)
-        // Enqueue the data. While the read method above had made sure we are under the
-        // buffer size threshold, we might still overshoot and have buffered more data.
-        // The over buffered data is only a maximum of twice the size of the
-        // AdaptiveRecvByteBufferAllocator.maximum. We need to twiddle with it to get a
-        // good estimate for the maximum size.
-        buffer.enqueue(bytes)
+        let envelope = unwrapInboundIn(data)
+        
+        // Enqueue the envelope.
+        buffer.enqueue(envelope)
 
-        // Increment the byteCount so that next read knows whether to read more or just wait
-        // for the receiver to dequeue and ask for more
-        bufferedMessages.wrappingIncrement(ordering: .acquiringAndReleasing)
-
+        // Increment the buffered datagram count
+        bufferedDatagrams.wrappingIncrement(ordering: .acquiringAndReleasing)
+        
         // Try to change the continuationState to current readSequence
         let (exchanged, state) = continuationState.compareExchange(expected: ContinuationState.noContinuation.rawValue,
                                                                    desired: readSequence,
@@ -305,7 +245,7 @@ internal final class AsyncTCPHandler: ChannelDuplexHandler {
         if _continuationState == .continuationSet, let bytes = buffer.dequeue() {
             let continuation = continuation
             self.continuation = nil
-            bufferedMessages.wrappingDecrement(ordering: .relaxed)
+            bufferedDatagrams.wrappingDecrement(ordering: .relaxed)
             continuationState.store(0, ordering: .releasing)
             continuation?.resume(returning: bytes)
         }
@@ -350,20 +290,20 @@ internal final class AsyncTCPHandler: ChannelDuplexHandler {
     }
     
     @inlinable
-    internal func requestRead(channel: Channel) {
-        if bufferedMessages.load(ordering: .relaxed) < maxBufferSize {
+    internal final func requestRead(channel: Channel) {
+        // If the upper bound is "unbounded" then we don't really need to manually call read since NIO will do it for us
+        if bufferedDatagrams.load(ordering: .relaxed) < maxDatagrams && maxDatagrams != .max {
             channel.read()
         }
     }
     
     @inlinable
-    internal func receive() async throws -> ByteBuffer {
+    internal final func receive() async throws -> AddressedEnvelope<ByteBuffer> {
         //TODO: Do this inside a cancellation handler? How do we handle it without locks?
-        // Try to dequeue some bytes, if successful, decrement the byteCount and return the data.
-        // If no data is present, we will need to wait for some
-        if let bytes = buffer.dequeue() {
-            bufferedMessages.wrappingDecrement(ordering: .relaxed)
-            return bytes
+        // Try to dequeue a datagram, if successful, decrement the buffered datagram count and return the datagram.
+        if let envelope = buffer.dequeue() {
+            bufferedDatagrams.wrappingDecrement(ordering: .relaxed)
+            return envelope
         }
         
         return try await withUnsafeThrowingContinuation { continuation in
@@ -396,7 +336,7 @@ internal final class AsyncTCPHandler: ChannelDuplexHandler {
                 // If the above exchange fails again, we know (from the precondition) that there must be data now, so the
                 // while loop actually runs a maximum of two times, i.e. only two compareExchanges
                 if let bytes = buffer.dequeue() {
-                    bufferedMessages.wrappingDecrement(ordering: .relaxed)
+                    bufferedDatagrams.wrappingDecrement(ordering: .relaxed)
                     self.continuation = nil
                     continuationState.store(0, ordering: .releasing)
                     continuation.resume(returning: bytes)
@@ -417,30 +357,15 @@ internal final class AsyncTCPHandler: ChannelDuplexHandler {
         }
     }
     
-
+    @inline(__always)
     @inlinable
-    internal func tryReceive() -> ByteBuffer? {
-        if let bytes = buffer.dequeue() {
-            bufferedMessages.wrappingDecrement(ordering: .relaxed)
-            return bytes
+    internal final func tryReceive() -> AddressedEnvelope<ByteBuffer>? {
+        if let envelope = buffer.dequeue() {
+            bufferedDatagrams.wrappingDecrement(ordering: .relaxed)
+            return envelope
         }
         return nil
     }
 }
-
-extension AsyncTCPClient: AsyncSequence {
-    public typealias Element = ByteBuffer
-    
-    public struct AsyncIterator: AsyncIteratorProtocol {
-        let tcpClient: AsyncTCPClient
-        
-        public func next() async throws -> ByteBuffer? {
-            try await tcpClient.receive()
-        }
-    }
-    
-    public func makeAsyncIterator() -> AsyncIterator {
-        AsyncIterator(tcpClient: self)
-    }
-}
 #endif
+
