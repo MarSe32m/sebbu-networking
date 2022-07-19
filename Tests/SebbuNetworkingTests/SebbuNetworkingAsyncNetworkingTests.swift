@@ -25,11 +25,11 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
         }
         serverClient.send([1,2,3,4,5])
         var data = try await asyncTCPClient.receive()
-        XCTAssertFalse(data.isEmpty)
+        XCTAssertFalse(data.readableBytes == 0)
         
         asyncTCPClient.send([1,2,3,4])
         var otherData = try await serverClient.receive()
-        XCTAssertFalse(otherData.isEmpty)
+        XCTAssertFalse(otherData.readableBytes == 0)
         
         for _ in 0..<1_000 {
             try await asyncTCPClient.disconnect()
@@ -42,11 +42,11 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
             
             serverClient.send([1,2,3,2,3])
             data = try await asyncTCPClient.receive()
-            XCTAssertFalse(data.isEmpty)
+            XCTAssertFalse(data.readableBytes == 0)
             
             asyncTCPClient.send([1,2,3,4,5,6])
             otherData = try await serverClient.receive()
-            XCTAssertFalse(otherData.isEmpty)
+            XCTAssertFalse(otherData.readableBytes == 0)
         }
         
         try await asyncTCPClient.disconnect()
@@ -60,19 +60,25 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
         var clientTasks = [Task<Int, Error>]()
 
         var totalSum = 0
+        var clients = [AsyncTCPClient]()
+        
         for i in 0..<testCount {
+            let client = try await AsyncTCPClient.connect(host: "localhost", port: 8888, on: eventLoopGroup)
+            clients.append(client)
+            totalSum += i
+        }
+        
+        for (i, client) in clients.enumerated() {
             clientTasks.append(Task {
-                let client = try await AsyncTCPClient.connect(host: "localhost", port: 8888, on: eventLoopGroup)
                 for _ in 0..<testCount {
                     client.send(testData)
                     let data = try await client.receive()
                     
-                    XCTAssert(data.count != 0, "Failed to receive data from server...")
+                    XCTAssert(data.readableBytes != 0, "Failed to receive data from server...")
                 }
                 try await client.disconnect()
                 return i
             })
-            totalSum += i
         }
 
         for _ in 0..<testCount {
@@ -87,7 +93,7 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
                 while true {
                     let data = try await client!.receive(count: testData.count)
                     client!.send([1,2,3,4,5,6])
-                    totalDataReceived += data.count
+                    totalDataReceived += data.readableBytes
                 }
                 XCTAssert(totalDataReceived == testCount * testData.count)
             }
@@ -123,8 +129,8 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
                 }
                 
                 for _ in 0..<testCount {
-                    let data = try await client.receive(count: testData.count)
-                    XCTAssert(data == testData)
+                    var data = try await client.receive(count: testData.count)
+                    XCTAssert((data.readBytes(length: testData.count) ?? []) == testData)
                 }
                 
                 try await client.disconnect()
@@ -169,7 +175,7 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
         
         client1.send([1,2,3,4,5,6])
         var recvData = try await client2.receive(count: 6)
-        XCTAssert(recvData.count == 6)
+        XCTAssert(recvData.readableBytes == 6)
         
         Task.detached { [client2] in
             for _ in 0..<1024 * 128 {
@@ -179,7 +185,7 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
         
         for _ in 0..<1024 {
             recvData = try await client1.receive(count: 1024 * 128)
-            XCTAssert(recvData.count == 1024 * 128)
+            XCTAssert(recvData.readableBytes == 1024 * 128)
         }
         
         Task.detached { [client2] in
@@ -194,14 +200,14 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
         
         do {
             for try await data in client1 {
-                totalData -= data.count
+                totalData -= data.readableBytes
             }
         } catch {
             XCTAssert(totalData == 0)
         }
         
         let lastData = client1.tryReceive()
-        XCTAssert(lastData.isEmpty)
+        XCTAssertNil(lastData)
         
         // No need to disconnect since the server client already did
         //try await client1.disconnect()

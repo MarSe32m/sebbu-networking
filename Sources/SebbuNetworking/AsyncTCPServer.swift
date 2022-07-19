@@ -14,6 +14,16 @@ public final class AsyncTCPServer: @unchecked Sendable {
     
     internal var clientStream: AsyncThrowingStream<AsyncTCPClient, Error>
     
+    /// The remote address of the server (should be nil)
+    public var remoteAddress: SocketAddress? {
+        listenerChannel.remoteAddress
+    }
+    
+    /// The local address of the server
+    public var localAddress: SocketAddress? {
+        listenerChannel.localAddress
+    }
+    
     internal init(channel: Channel, clientStream: AsyncThrowingStream<AsyncTCPClient, Error>) {
         self.listenerChannel = channel
         self.clientStream = clientStream
@@ -34,7 +44,7 @@ public final class AsyncTCPServer: @unchecked Sendable {
             .childChannelOption(ChannelOptions.recvAllocator, value: AdaptiveRecvByteBufferAllocator())
             .childChannelInitializer { channel in
                 //TODO: Pass in the config...
-                let asyncTCPHandler = AsyncTCPHandler(maxBytes: 16 * 1024)
+                let asyncTCPHandler = AsyncTCPHandler(bufferSize: 16)
                 let asyncTCPClient = AsyncTCPClient(channel: channel, handler: asyncTCPHandler, config: .init())
                 let asyncTCPClientServerHandler = AsyncTCPServerClientHandler(client: asyncTCPClient, stream: tcpClientContinuation)
                 _ = channel.pipeline.addHandler(asyncTCPHandler)

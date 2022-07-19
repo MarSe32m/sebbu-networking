@@ -22,20 +22,14 @@ public final class AsyncUDPClient: @unchecked Sendable {
         }
     }
     
+    /// The remote address of this client (should be nil)
     public var remoteAddress: SocketAddress? {
         channel.remoteAddress
     }
     
+    /// The local address of this client
     public var localAddress: SocketAddress? {
         channel.localAddress
-    }
-    
-    public var remotePort: Int? {
-        channel.remoteAddress?.port
-    }
-    
-    public var localPort: Int? {
-        channel.localAddress?.port
     }
     
     @usableFromInline
@@ -43,9 +37,6 @@ public final class AsyncUDPClient: @unchecked Sendable {
     
     @usableFromInline
     internal let handler: AsyncUDPHandler
-    
-    @usableFromInline
-    internal var sendBuffer: ByteBuffer = ByteBufferAllocator().buffer(capacity: 2048)
     
     internal init(channel: Channel, handler: AsyncUDPHandler) {
         self.channel = channel
@@ -57,6 +48,7 @@ public final class AsyncUDPClient: @unchecked Sendable {
                                       bufferCacheSize: configuration.bufferCacheSize)
         let channel = try await DatagramBootstrap(group: on)
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
+        //TODO: rcv and snd buffers configurable?
             //.channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_RCVBUF), value: .init(25 * 1024 * 1024))
             //.channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_SNDBUF), value: .init(sendBufferSize))
             .channelInitializer { channel in
@@ -72,7 +64,7 @@ public final class AsyncUDPClient: @unchecked Sendable {
     }
     
     @inlinable
-    public final func receive() async throws -> AddressedEnvelope<ByteBuffer>? {
+    public final func receive() async throws -> AddressedEnvelope<ByteBuffer> {
         handler.requestRead(channel: channel)
         return try await handler.receive()
     }
@@ -290,7 +282,7 @@ internal final class AsyncUDPHandler: ChannelDuplexHandler {
     }
     
     @inlinable
-    internal final func receive() async throws -> AddressedEnvelope<ByteBuffer>? {
+    internal final func receive() async throws -> AddressedEnvelope<ByteBuffer> {
         //TODO: Do this inside a cancellation handler? How do we handle it without locks?
         // Try to dequeue a datagram, if successful, decrement the buffered datagram count and return the datagram.
         if let envelope = buffer.dequeue() {
@@ -298,7 +290,7 @@ internal final class AsyncUDPHandler: ChannelDuplexHandler {
             return envelope
         }
         
-        return try await withUnsafeThrowingContinuation { (continuation: UnsafeContinuation<AddressedEnvelope<ByteBuffer>, Error>) in
+        return try await withUnsafeThrowingContinuation { continuation in
             self.continuation = continuation
             var currentContinuationState: UInt64 = 0
             var exchanged = false
