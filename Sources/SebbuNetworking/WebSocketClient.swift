@@ -43,20 +43,4 @@ public extension WebSocket {
         }
     }
 }
-
-//TODO: Remove this?
-#if canImport(Foundation)
-import Foundation
-public extension WebSocket {
-    static func connect(to url: URL, headers: HTTPHeaders = [:], configuration: WebSocketClient.Configuration = .init(), on group: EventLoopGroup) async throws -> WebSocket {
-        try await withUnsafeThrowingContinuation { continuation in
-            connect(to: url, headers: headers, configuration: configuration, on: group) { websocket in
-                continuation.resume(returning: websocket)
-            }.whenFailure { error in
-                continuation.resume(throwing: error)
-            }
-        }
-    }
-}
-#endif
 #endif

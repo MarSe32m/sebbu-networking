@@ -16,6 +16,8 @@ public final class AsyncUDPClient: @unchecked Sendable {
         /// The internal buffer cache in datagrams! Not bytes!
         public var bufferCacheSize: Int
         
+        //TODO: Buffering strategy? i.e. unbounded, dropNewest or dropOldest
+        
         public init(maxDatagrams: Int = .max, bufferedCacheSize: Int = 2048) {
             self.maxDatagrams = maxDatagrams
             self.bufferCacheSize = bufferedCacheSize
