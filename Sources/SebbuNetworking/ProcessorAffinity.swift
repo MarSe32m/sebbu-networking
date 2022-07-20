@@ -12,7 +12,7 @@ import Glibc
 import WinSDK
 #endif
 
-public struct CpuBit {
+public struct CpuBit: Equatable {
     public let position: Int32
 }
 
@@ -33,9 +33,9 @@ public func getProcessorAffinity() throws -> [CpuBit] {
     return withUnsafeBytes(of: &cpuSet.__bits) { bytes in
         var cpuBits: [CpuBit] = []
         var position = 0
-        for bytes in bytes {
+        for byte in bytes {
             for i in 0..<8 {
-                if byte >> i & 1 == 0 {
+                if byte >> i & 1 == 1 {
                     cpuBits.append(CpuBit(position: Int32(position)))
                 }
                 position += 1
@@ -60,7 +60,7 @@ public func setProcessorAffinity(_ cpuBits: [CpuBit]) throws -> [CpuBit] {
     for cpuBit in cpuBits {
         cpu_set(cpuBit.position, &cpuSet)
     }
-    let status = pthread_setAffinity_np(currentThread, MemoryLayout.stride(ofValue: cpuSet), &cpuSet)
+    let status = pthread_setaffinity_np(currentThread, MemoryLayout.stride(ofValue: cpuSet), &cpuSet)
     if status != 0 {
         throw ProcessorAffinityError.errorCode(status)
     }
