@@ -5,7 +5,7 @@
 //  Created by Sebastian Toivonen on 27.12.2021.
 //
 
-#if os(macOS) || os(iOS)
+#if os(macOS) || os(iOS) || os(watchOS) || os(tvOS)
 import Darwin
 #elseif os(Linux)
 import Glibc

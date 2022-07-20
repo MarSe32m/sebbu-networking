@@ -32,9 +32,10 @@ let package = Package(
     .product(name: "NIOTransportServices", package: "swift-nio-transport-services", condition: .when(platforms: [.macOS, .iOS, .watchOS, .tvOS])),
                            .product(name: "DequeModule", package: "swift-collections"),
                            .product(name: "SebbuTSDS", package: "sebbu-ts-ds"),
-    .product(name: "WebSocketKit", package: "websocket-kit", condition: .when(platforms: [.macOS, .iOS, .watchOS, .tvOS, .linux, /*.windows*/]))
-                ]
+    .product(name: "WebSocketKit", package: "websocket-kit", condition: .when(platforms: [.macOS, .iOS, .watchOS, .tvOS, .linux, /*.windows*/])),
+    "CSebbuNetworking"]
         ),
+        .target(name: "CSebbuNetworking"),
         .testTarget(
             name: "SebbuNetworkingTests",
             dependencies: ["SebbuNetworking"]),
