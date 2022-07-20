@@ -13,12 +13,14 @@ import WinSDK
 #endif
 
 public struct CpuBit: Equatable {
-    public let position: Int32
+    public let position: Int
 }
 
 public enum ProcessorAffinityError: Error {
     case errorCode(Int32)
+    #if !(os(Linux) || os(Windows))
     case platformNotSupported
+    #endif
 }
 
 public func getProcessorAffinity() throws -> [CpuBit] {
@@ -36,7 +38,7 @@ public func getProcessorAffinity() throws -> [CpuBit] {
         for byte in bytes {
             for i in 0..<8 {
                 if byte >> i & 1 == 1 {
-                    cpuBits.append(CpuBit(position: Int32(position)))
+                    cpuBits.append(CpuBit(position: numericCast(position)))
                 }
                 position += 1
             }
@@ -44,8 +46,26 @@ public func getProcessorAffinity() throws -> [CpuBit] {
         return cpuBits
     }
     #elseif os(Windows)
-    #warning("TODO: Windows implementation")
-    throw ProcessorAffinityError.platformNotSupported
+    let currentThread = WinSDK.GetCurrentThread()
+    var groupAffinity = _GROUP_AFFINITY()
+    if !WinSDK.GetThreadGroupAffinity(currentThread, &groupAffinity) {
+        let error = WinSDK.GetLastError()
+        throw ProcessorAffinityError.errorCode(numericCast(error))
+    }
+    var mask = groupAffinity.Mask
+    return withUnsafeBytes(of: &mask) { bytes in
+        var cpuBits: [CpuBit] = []
+        var position = 0
+        for byte in bytes {
+            for i in 0..<8 {
+                if byte >> i & 1 == 1 {
+                    cpuBits.append(CpuBit(position: numericCast(position)))
+                }
+                position += 1
+            }
+        }
+        return cpuBits
+    }
     #else
     throw ProcessorAffinityError.platformNotSupported
     #endif
@@ -58,7 +78,7 @@ public func setProcessorAffinity(_ cpuBits: [CpuBit]) throws -> [CpuBit] {
     let currentThread = pthread_self()
     cpu_zero(&cpuSet)
     for cpuBit in cpuBits {
-        cpu_set(cpuBit.position, &cpuSet)
+        cpu_set(numericCast(cpuBit.position), &cpuSet)
     }
     let status = pthread_setaffinity_np(currentThread, MemoryLayout.stride(ofValue: cpuSet), &cpuSet)
     if status != 0 {
@@ -66,8 +86,16 @@ public func setProcessorAffinity(_ cpuBits: [CpuBit]) throws -> [CpuBit] {
     }
     return try getProcessorAffinity()
     #elseif os(Windows)
-    #warning("TODO: Windows implementation")
-    throw ProcessorAffinityError.platformNotSupported
+    let currentThread = WinSDK.GetCurrentThread()
+    var mask: DWORD_PTR = 0
+    for cpuBit in cpuBits {
+        mask |= 1 << cpuBit.position
+    }
+    if WinSDK.SetThreadAffinityMask(currentThread, mask) == 0 {
+        let error = WinSDK.GetLastError()
+        throw ProcessorAffinityError.errorCode(numericCast(error))
+    }
+    return try getProcessorAffinity()
     #else
     throw ProcessorAffinityError.platformNotSupported
     #endif
