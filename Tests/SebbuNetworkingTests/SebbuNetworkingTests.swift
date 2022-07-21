@@ -27,10 +27,6 @@ final class SebbuNetworkingTests: XCTestCase {
         XCTAssertFalse("2001:g::".isIpAddress())
     }
     
-    func testCoreCount() {
-        XCTAssertGreaterThan(SystemUtils.coreCount, 0)
-    }
-    
     #if !os(Windows)
     func disabled_testIPv4Supported() {
         XCTAssertTrue(NetworkUtils.supportsIPv4)

@@ -7,7 +7,7 @@
 import XCTest
 import SebbuNetworking
 
-final class SebbuNetworkingProcessorAffinityTests: XCTestCase {
+final class SebbuNetworkingSystemUtilsTests: XCTestCase {
     func testProcessorAffinity() throws {
         #if os(Linux) || os(Windows)
         var cpuBits = try SystemUtils.getProcessorAffinity()
@@ -18,5 +18,9 @@ final class SebbuNetworkingProcessorAffinityTests: XCTestCase {
         #else
         throw XCTSkip("Processor affinity not supported on this platform")
         #endif
+    }
+
+    func testCoreCount() {
+        XCTAssertGreaterThan(SystemUtils.coreCount, 0)
     }
 }
