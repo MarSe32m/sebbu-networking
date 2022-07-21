@@ -284,7 +284,7 @@ internal final class AsyncUDPHandler: ChannelDuplexHandler {
     @inlinable
     internal final func requestRead(channel: Channel) {
         // If the upper bound is "unbounded" then we don't really need to manually call read since NIO will do it for us
-        if bufferedDatagrams.load(ordering: .relaxed) < maxDatagrams && maxDatagrams != .max {
+        if maxDatagrams != .max && bufferedDatagrams.load(ordering: .relaxed) < maxDatagrams {
             channel.read()
         }
     }

@@ -10,10 +10,10 @@ import SebbuNetworking
 final class SebbuNetworkingProcessorAffinityTests: XCTestCase {
     func testProcessorAffinity() throws {
         #if os(Linux) || os(Windows)
-        var cpuBits = try getProcessorAffinity()
+        var cpuBits = try SystemUtils.getProcessorAffinity()
         XCTAssertFalse(cpuBits.isEmpty)
         cpuBits.removeFirst()
-        let newBits = try setProcessorAffinity(cpuBits)
+        let newBits = try SystemUtils.setProcessorAffinity(cpuBits)
         XCTAssertEqual(newBits, cpuBits)
         #else
         throw XCTSkip("Processor affinity not supported on this platform")

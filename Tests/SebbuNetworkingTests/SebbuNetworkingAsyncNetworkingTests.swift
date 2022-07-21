@@ -14,8 +14,19 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
     private let testData = (0..<1024 * 16).map { _ in UInt8.random(in: .min ... .max) }
     private let testCount = 50
     
+    private var eventLoopGroup: MultiThreadedEventLoopGroup! = nil
+    
+    override func setUp() {
+        super.setUp()
+        eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
+    }
+    
+    override func tearDown() async throws {
+        try await super.tearDown()
+        try await eventLoopGroup.shutdownGracefully()
+    }
+    
     func testAsyncTCPServerConnectionAndDisconnection() async throws {
-        let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
         let server = try await AsyncTCPServer.bind(host: "localhost", port: 7777, on: eventLoopGroup)
         var asyncTCPClient = try await AsyncTCPClient.connect(host: "localhost", port: 7777, on: eventLoopGroup)
         var serverClient: AsyncTCPClient!
@@ -51,11 +62,9 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
         
         try await asyncTCPClient.disconnect()
         try await server.close()
-        try await eventLoopGroup.shutdownGracefully()
     }
     
     func testAsyncTCPMultipleClientServerConnection() async throws {
-        let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
         let server = try await AsyncTCPServer.bind(host: "localhost", port: 8888, on: eventLoopGroup)
         var clientTasks = [Task<Int, Error>]()
 
@@ -105,11 +114,9 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
         
         try await server.close()
         XCTAssert(totalSum == 0)
-        try await eventLoopGroup.shutdownGracefully()
     }
     
     func testAsyncTCPClientServerConnectionChunkedReads() async throws {
-        let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
         let server = try await AsyncTCPServer.bind(host: "localhost", port: 8889, on: eventLoopGroup)
         var clientTasks = [Task<Int, Error>]()
 
@@ -159,11 +166,9 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
         }
         try await server.close()
         XCTAssert(totalSum == 0)
-        try await eventLoopGroup.shutdownGracefully()
     }
     
     func testAsyncTCPConnection() async throws {
-        let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
         let server = try await AsyncTCPServer.bind(host: "localhost", port: 8890, on: eventLoopGroup)
         let client1 = try await AsyncTCPClient.connect(host: "localhost", port: 8890, on: eventLoopGroup)
         var client2: AsyncTCPClient!
@@ -212,11 +217,9 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
         // No need to disconnect since the server client already did
         //try await client1.disconnect()
         try await server.close()
-        try await eventLoopGroup.shutdownGracefully()
     }
     
     func testAsyncUDPEchoServer() async throws {
-        let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 2)
         let client = try await AsyncUDPClient.create(host: "0", port: 0, configuration: .init(), on: eventLoopGroup)
         let server = try await AsyncUDPServer.create(host: "0", port: 25565, configuration: .init(), on: eventLoopGroup)
         
@@ -242,7 +245,6 @@ final class SebbuKitAsyncNetworkingTests: XCTestCase {
         
         try await client.close()
         try await server.close()
-        try await eventLoopGroup.shutdownGracefully()
     }
 }
 #endif
