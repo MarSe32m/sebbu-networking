@@ -6,7 +6,7 @@
         "repositoryURL": "https://github.com/MarSe32m/sebbu-ts-ds.git",
         "state": {
           "branch": "main",
-          "revision": "b9624c76314c6b8d41d5249921de44c8cb2cb21e",
+          "revision": "8bf38d8c536aba82b0cfeb93b943638aaa3734ef",
           "version": null
         }
       },
@@ -60,7 +60,7 @@
         "repositoryURL": "https://github.com/vapor/websocket-kit.git",
         "state": {
           "branch": "main",
-          "revision": "d8230eae70650652661f360f322db0cc22955b2f",
+          "revision": "3af54d0858e9149612c3892a8d0421f4132bb1cd",
           "version": null
         }
       }
