@@ -215,10 +215,11 @@ internal final class AsyncDuplexHandler<Element>: ChannelDuplexHandler {
                 continuation?.resume(throwing: CancellationError())
             }
         } else if let event = event as? TimeoutEvent {
+            if event.receiveId != receiveCount.load(ordering: .relaxed) { return }
             let (exchanged, _state) = continuationState.compareExchange(expected: ContinuationState.noContinuation.rawValue,
                                                                         desired: ContinuationState.receiveTimeout.rawValue,
                                                                         ordering: .relaxed)
-            if exchanged || event.receiveId != receiveCount.load(ordering: .relaxed) { return }
+            if exchanged { return }
             let state = ContinuationState.construct(_state)
             if state == .continuationSet {
                 let continuation = continuation
