@@ -85,7 +85,7 @@ final class SebbuKitAsyncUDPTests: XCTestCase {
         XCTAssertNotNil(server.localAddress)
         XCTAssertNil(server.remoteAddress)
         var clients = [AsyncUDPClient]()
-        for _ in 0..<50 {
+        for _ in 0..<5 {
             let client = try await AsyncUDPClient.create(host: "0", port: 0, configuration: .init(), on: eventLoopGroup)
             XCTAssertNotNil(client.localAddress)
             XCTAssertNil(client.remoteAddress)
@@ -119,7 +119,7 @@ final class SebbuKitAsyncUDPTests: XCTestCase {
                 }
             }
         }
-        for _ in 0..<50 * 10 {
+        for _ in 0..<5 * 10 {
             let datagram = try await server.receive(timeout: 10_000_000)
             try await server.sendBlocking(datagram)
         }
