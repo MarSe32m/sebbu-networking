@@ -61,6 +61,9 @@ internal final class AsyncDuplexHandler<Element>: ChannelDuplexHandler {
     let receiveCount: ManagedAtomic<Int> = ManagedAtomic(0)
     
     @usableFromInline
+    let timeoutCount: ManagedAtomic<Int> = ManagedAtomic(0)
+    
+    @usableFromInline
     var continuation: UnsafeContinuation<Element, Error>?
     
     /// The sequence number of the current read
@@ -215,7 +218,8 @@ internal final class AsyncDuplexHandler<Element>: ChannelDuplexHandler {
                 continuation?.resume(throwing: CancellationError())
             }
         } else if let event = event as? TimeoutEvent {
-            if event.receiveId != receiveCount.load(ordering: .relaxed) { return }
+            if timeoutCount.load(ordering: .acquiring) > event.receiveId || event.receiveId != receiveCount.load(ordering: .relaxed) { return }
+            timeoutCount.store(event.receiveId, ordering: .releasing)
             let (exchanged, _state) = continuationState.compareExchange(expected: ContinuationState.noContinuation.rawValue,
                                                                         desired: ContinuationState.receiveTimeout.rawValue,
                                                                         ordering: .relaxed)
@@ -251,7 +255,8 @@ internal final class AsyncDuplexHandler<Element>: ChannelDuplexHandler {
         
         let timeoutTask: Scheduled<Void>? = {
             if timeout != .max {
-                return channel.eventLoop.scheduleTask(in: .nanoseconds(Int64(timeout))) {
+                let timeout = timeout > Int64.max.magnitude ? Int64.max : Int64(timeout)
+                return channel.eventLoop.scheduleTask(in: .nanoseconds(timeout)) {
                     channel.triggerUserOutboundEvent(TimeoutEvent(receiveId: currentReceiveId), promise: nil)
                 }
             }
@@ -310,7 +315,7 @@ internal final class AsyncDuplexHandler<Element>: ChannelDuplexHandler {
                         continuationState.store(ContinuationState.noContinuation.rawValue, ordering: .releasing)
                         continuation.resume(throwing: CancellationError())
                         return
-                    } else if state == .receiveTimeout {
+                    } else if state == .receiveTimeout && timeoutCount.load(ordering: .relaxed) == currentReceiveId {
                         precondition(timeout < .max)
                         self.continuation = nil
                         continuationState.store(ContinuationState.noContinuation.rawValue, ordering: .releasing)

@@ -214,7 +214,6 @@ final class SebbuKitAsyncUDPTests: XCTestCase {
         XCTAssertTrue(clientDidThrow)
     }
     
-    //Start server, start client, execute a ping pong sequence 10_000 (synchronize with atomic, if sender hasn't received in 1000 iterations, then re send), close server, close client
     func testAsyncUDPClientServerPingPong() async throws {
         let server = try await AsyncUDPServer.create(host: "0", port: 25568, configuration: .init(), on: eventLoopGroup)
         let client = try await AsyncUDPClient.create(host: "0", port: 0, configuration: .init(), on: eventLoopGroup)

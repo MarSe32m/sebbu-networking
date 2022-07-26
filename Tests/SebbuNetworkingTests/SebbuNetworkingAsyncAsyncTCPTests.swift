@@ -169,15 +169,16 @@ final class SebbuKitAsyncTCPTests: XCTestCase {
             Task.detached {
                 for _ in 0..<100 {
                     let data = [UInt8].random(count: 1024 * 16)
-                    client.send(data)
+                    try await client.sendBlocking(data)
                     sentData.wrappingIncrement(by: 1024 * 16, ordering: .relaxed)
                 }
+                try await client.disconnect()
             }
             for try await serverClient in server.prefix(1) {
                 while sentData.load(ordering: .relaxed) < 0 {
-                    let data = try await serverClient.receive(timeout: 100_000_000)
+                    let data = try await serverClient.receive()
                     sentData.wrappingDecrement(by: data.readableBytes, ordering: .relaxed)
-                    try await Task.sleep(nanoseconds: 1_000_000)
+                    try await Task.sleep(nanoseconds: 10_000_000)
                 }
                 try await serverClient.disconnect()
                 break
@@ -197,13 +198,14 @@ final class SebbuKitAsyncTCPTests: XCTestCase {
                 while dataSent.load(ordering: .relaxed) < dataToSend {
                     try await Task.sleep(nanoseconds: 10_000_000)
                     let data = [UInt8].random(count: 1024 * 16)
-                    client.send(data)
+                    try await client.sendBlocking(data)
                     dataSent.wrappingIncrement(by: data.count, ordering: .relaxed)
                 }
+                try await client.disconnect()
             }
             for try await serverClient in server.prefix(1) {
                 while dataReceived.load(ordering: .relaxed) != dataSent.load(ordering: .relaxed) {
-                    let data = try await serverClient.receive(timeout: 100_000_000)
+                    let data = try await serverClient.receive()
                     dataReceived.wrappingIncrement(by: data.readableBytes, ordering: .relaxed)
                 }
                 try await serverClient.disconnect()
@@ -213,34 +215,6 @@ final class SebbuKitAsyncTCPTests: XCTestCase {
             XCTFail("Slow writing test threw an error \(error)")
             return
         }
-        try await server.close()
-    }
-    
-    func testAsyncTCPClientServerStreamOrdering() async throws {
-        let server = try await AsyncTCPServer.bind(host: "0", port: 6004, on: eventLoopGroup)
-        let client = try await AsyncTCPClient.connect(host: "localhost", port: 6004, on: eventLoopGroup)
-        
-        Task.detached {
-            for i: UInt64 in 0..<100_000 {
-                withUnsafeBytes(of: i) { bytes in
-                    let data = [UInt8](bytes)
-                    client.send(data)
-                }
-            }
-        }
-        
-        for try await serverClient in server.prefix(1) {
-            for i: UInt64 in 0..<100_000 {
-                let data = try await serverClient.receive(count: 8, timeout: 1_000_000_000)
-                guard let integer = data.getInteger(at: 0, endianness: .little, as: UInt64.self) else {
-                    XCTFail("Failed to read integer from data")
-                    return
-                }
-                XCTAssertEqual(integer, i)
-            }
-            try await serverClient.disconnect()
-        }
-        try await Task.sleep(nanoseconds: 1_000_000)
         try await server.close()
     }
     
@@ -370,9 +344,9 @@ final class SebbuKitAsyncTCPTests: XCTestCase {
 
         for _ in 0..<testCount {
             var client: AsyncTCPClient!
-            for try await _client in server {
+            for try await _client in server.prefix(1) {
                 client = _client
-                break
+                break //This break is unnecessary
             }
             XCTAssertNotNil(client)
             Task { [client] in
@@ -383,6 +357,9 @@ final class SebbuKitAsyncTCPTests: XCTestCase {
                     totalDataReceived += data.readableBytes
                 }
                 XCTAssert(totalDataReceived == testCount * testData.count)
+                do {
+                    try await client?.disconnect()
+                } catch {}
             }
         }
 
@@ -441,7 +418,7 @@ final class SebbuKitAsyncTCPTests: XCTestCase {
         XCTAssertNil(lastData)
         
         // No need to disconnect since the server client already did
-        //try await client1.disconnect()
+        do { try await client1.disconnect() } catch {}
         try await server.close()
     }
 }
