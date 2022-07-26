@@ -215,6 +215,7 @@ final class SebbuKitAsyncTCPTests: XCTestCase {
             XCTFail("Slow writing test threw an error \(error)")
             return
         }
+        try await Task.sleep(nanoseconds: 1_000_000_000)
         try await server.close()
     }
     
@@ -369,57 +370,6 @@ final class SebbuKitAsyncTCPTests: XCTestCase {
         
         try await server.close()
         XCTAssert(totalSum == 0)
-    }
-    
-    func testAsyncTCPConnection() async throws {
-        let server = try await AsyncTCPServer.bind(host: "localhost", port: 8890, on: eventLoopGroup)
-        let client1 = try await AsyncTCPClient.connect(host: "localhost", port: 8890, on: eventLoopGroup)
-        var client2: AsyncTCPClient!
-        for try await _client in server {
-            client2 = _client
-            break
-        }
-        XCTAssertNotNil(client2)
-        
-        client1.send([1,2,3,4,5,6])
-        var recvData = try await client2.receive(count: 6)
-        XCTAssert(recvData.readableBytes == 6)
-        
-        Task.detached { [client2] in
-            for _ in 0..<1024 * 128 {
-                client2!.send([UInt8](repeating: 0, count: 1024))
-            }
-        }
-        
-        for _ in 0..<1024 {
-            recvData = try await client1.receive(count: 1024 * 128)
-            XCTAssert(recvData.readableBytes == 1024 * 128)
-        }
-        
-        Task.detached { [client2] in
-            for _ in 0..<1023 {
-                client2!.send([UInt8](repeating: 0, count: 1024))
-            }
-            try await client2!.sendBlocking([UInt8](repeating: 0, count: 1024))
-            try await client2!.disconnect()
-        }
-        
-        var totalData = 1024 * 1024
-        
-        do {
-            for try await data in client1 {
-                totalData -= data.readableBytes
-            }
-        } catch {
-            XCTAssert(totalData == 0)
-        }
-        
-        let lastData = client1.tryReceive()
-        XCTAssertNil(lastData)
-        
-        // No need to disconnect since the server client already did
-        do { try await client1.disconnect() } catch {}
-        try await server.close()
     }
 }
 #endif
