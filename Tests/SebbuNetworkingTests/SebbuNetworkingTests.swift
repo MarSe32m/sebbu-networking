@@ -13,7 +13,7 @@ final class SebbuNetworkingTests: XCTestCase {
         XCTAssertTrue("0.0.0.0".isIpAddress)
         XCTAssertTrue("255.255.255.255".isIpAddress)
         XCTAssertTrue("::".isIpAddress)
-        XCTAssertTrue("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff".isIpAddress())
+        XCTAssertTrue("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff".isIpAddress)
         XCTAssertTrue("2001::f:1234".isIpAddress)
         
         XCTAssertFalse("".isIpAddress)
