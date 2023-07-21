@@ -26,50 +26,7 @@ jobs:
       run: swift build -c release
       
     - name: Test (Debug)
-      run: swift test --configuration debug --parallel
+      run: swift test -c debug
       
     - name: Test (Release)
-      run: swift test --configuration release -Xswiftc -enable-testing --parallel
-
-#name: macOS
-#
-#on:
-#  push:
-#    branches: [ main ]
-#  pull_request:
-#    branches: [ main ]
-#
-#jobs:
-#  macOS-swift-latest:
-#    #runs-on: macos-latest
-#    runs-on: macos-11
-#    continue-on-error: true
-#    strategy:
-#      matrix:
-#        include:
-#         - tag: 5.5.1-RELEASE
-#           branch: swift-5.5.1-release
-#         - tag: DEVELOPMENT-SNAPSHOT-2021-11-20-a
-#           branch: development
-#    steps:
-#    - uses: compnerd/gha-setup-swift@main
-#      with:
-#        branch: ${{ matrix.branch }}
-#        tag: ${{ matrix.tag }}
-#        
-#    - uses: actions/checkout@v2
-#    
-#    - name: Swift Version
-#      run: swift --version
-#      
-#    - name: Build (Debug)
-#      run: swift build -c debug
-#      
-#    - name: Build (Release)
-#      run: swift build -c release
-#      
-#    - name: Test (Debug)
-#      run: swift test --configuration debug --parallel
-#      
-#    - name: Test (Release)
-#      run: swift test --configuration release -Xswiftc -enable-testing --parallel
+      run: swift test -c release
