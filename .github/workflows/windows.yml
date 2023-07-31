@@ -28,7 +28,7 @@ jobs:
       with:
         branch: ${{ matrix.branch }}
         tag: ${{ matrix.tag }}
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     
     - name: Swift Version
       run: swift --version
