@@ -6,49 +6,32 @@
 //
 
 import CSebbuNetworking
-#if os(Linux) || os(FreeBSD) || os(Android)
+import SebbuCLibUV
+#if canImport(Glibc)
 import Glibc
-import NIO
-#elseif os(Windows)
+#elseif canImport(Musl)
+import Musl
+#elseif canImport(WinSDK)
 import WinSDK
-#elseif os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+#elseif canImport(Darwin)
 import Darwin
-import NIO
 #endif
 
 public struct SystemUtils {
-    //TODO: Once NIO supports Windows, just shim this to System.coreCount
-    public static var coreCount: Int {
-#if os(Windows)
-        var dwLength: DWORD = 0
-        _ = GetLogicalProcessorInformation(nil, &dwLength)
+    public static var availableParallelism: Int {
+        numericCast(uv_available_parallelism())
+    }
 
-        let alignment: Int =
-            MemoryLayout<SYSTEM_LOGICAL_PROCESSOR_INFORMATION>.alignment
-        let pBuffer: UnsafeMutableRawPointer =
-            UnsafeMutableRawPointer.allocate(byteCount: Int(dwLength),
-                                             alignment: alignment)
-        defer {
-            pBuffer.deallocate()
-        }
+    public static var freeMemory: Int {
+        numericCast(uv_get_free_memory())
+    }
 
-        let dwSLPICount: Int =
-            Int(dwLength) / MemoryLayout<SYSTEM_LOGICAL_PROCESSOR_INFORMATION>.stride
-        let pSLPI: UnsafeMutablePointer<SYSTEM_LOGICAL_PROCESSOR_INFORMATION> =
-            pBuffer.bindMemory(to: SYSTEM_LOGICAL_PROCESSOR_INFORMATION.self,
-                               capacity: dwSLPICount)
+    public static var totalMemory: Int {
+        numericCast(uv_get_total_memory())
+    }
 
-        let bResult: Bool = GetLogicalProcessorInformation(pSLPI, &dwLength)
-        precondition(bResult, "GetLogicalProcessorInformation: \(GetLastError())")
-
-        return UnsafeBufferPointer<SYSTEM_LOGICAL_PROCESSOR_INFORMATION>(start: pSLPI,
-                                                                         count: dwSLPICount)
-            .filter { $0.Relationship == RelationProcessorCore }
-            .map { $0.ProcessorMask.nonzeroBitCount }
-            .reduce(0, +)
-#else
-        return System.coreCount
-#endif
+    public static var availableMemory: Int {
+        numericCast(uv_get_available_memory())
     }
     
     public struct CpuBit: Equatable {

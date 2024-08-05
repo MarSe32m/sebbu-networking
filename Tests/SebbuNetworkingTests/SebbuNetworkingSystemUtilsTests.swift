@@ -21,6 +21,6 @@ final class SebbuNetworkingSystemUtilsTests: XCTestCase {
     }
 
     func testCoreCount() {
-        XCTAssertGreaterThan(SystemUtils.coreCount, 0)
+        XCTAssertGreaterThan(SystemUtils.availableParallelism, 0)
     }
 }

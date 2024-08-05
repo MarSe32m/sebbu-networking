@@ -8,7 +8,11 @@
 #if os(macOS) || os(iOS) || os(watchOS) || os(tvOS)
 import Darwin
 #elseif os(Linux)
+#if canImport(Glibc)
 import Glibc
+#elseif canImport(Musl)
+import Musl
+#endif
 #elseif os(Windows)
 import WinSDK
 #endif

@@ -7,7 +7,7 @@
 //
 
 //TODO: Implement on Windows
-#if canImport(NIO)
+#if canImport(NIO_)
 import WebSocketKit
 import NIOWebSocket
 import NIO

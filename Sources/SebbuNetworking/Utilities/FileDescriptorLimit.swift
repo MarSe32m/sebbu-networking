@@ -8,7 +8,11 @@
 #if os(macOS)
 import Darwin
 #elseif os(Linux)
+#if canImport(Glibc)
 import Glibc
+#elseif canImport(Musl)
+import Musl
+#endif
 #endif
 
 #if os(macOS) || os(Linux)
@@ -80,5 +84,13 @@ public func getFileDescriptorHardLimit() throws -> Int {
     }
     return Int(limit.rlim_max)
 }
+#else 
+public func setFileDescriptorSoftLimit(_ count: Int) throws {}
+
+public func setFileDescriptorHardLimit(_ count: Int) throws {}
+
+public func getFileDescriptorSoftLimit() throws -> Int { 0 }
+
+public func getFileDescriptorHardLimit() throws -> Int { 0 }
 #endif
 

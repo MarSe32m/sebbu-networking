@@ -5,7 +5,7 @@
 //  Created by Sebastian Toivonen on 17.6.2021.
 //
 
-#if canImport(NIO)
+#if canImport(NIO_)
 import NIO
 @_exported import WebSocketKit
 import NIOWebSocket

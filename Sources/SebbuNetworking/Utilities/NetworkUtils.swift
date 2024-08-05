@@ -10,32 +10,8 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
-//TODO: Remove canImport when Windows get support
-#if canImport(NIO)
-import NIO
-#endif
 
 public struct NetworkUtils {
-    #if canImport(NIO)
-    public static var supportsIPv4: Bool {
-        do {
-            let ipv4Loopback = try SocketAddress(ipAddress: "127.0.0.1", port: 0)
-            return try System.enumerateDevices().contains(where: { $0.address == ipv4Loopback })
-        } catch {
-            return false
-        }
-    }
-    
-    public static var supportsIPv6: Bool {
-        do {
-            let ipv6Loopback = try SocketAddress(ipAddress: "::1", port: 0)
-            return try System.enumerateDevices().contains(where: { $0.address == ipv6Loopback })
-        } catch {
-            return false
-        }
-    }
-    #endif
-    
     private struct IpifyJson: Codable {
         let ip: String
     }
