@@ -13,13 +13,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-         - tag: 5.6.3-RELEASE
-           branch: swift-5.6.3-release
-         - tag: 5.7.3-RELEASE
-           branch: swift-5.7.3-release
-         - tag: 5.8.1-RELEASE
-           branch: swift-5.8.1-release
-           #TODO: Add 5.9-RELEASE
+         - tag: 5.10.1-RELEASE
+           branch: swift-5.10.1-release
+         #TODO: Add 6.0 release and remove older
+         #- tag: 6.0-RELEASE
+         #  branch: swift-6.0-release
          - tag: DEVELOPMENT-SNAPSHOT-2023-07-10-a
            branch: development
            
