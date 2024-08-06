@@ -26,7 +26,11 @@ public func setFileDescriptorSoftLimit(_ count: Int) throws {
     #if os(macOS)
     let rlimit_nofile = RLIMIT_NOFILE
     #elseif os(Linux)
+    #if canImport(Glibc)
     let rlimit_nofile = __rlimit_resource_t(RLIMIT_NOFILE.rawValue)
+    #elseif canImport(Musl)
+    let rlimit_nofile = RLIMIT_NOFILE
+    #endif
     #endif
     let getRLimitResult = getrlimit(rlimit_nofile, &limit)
     if getRLimitResult != 0 {
@@ -44,7 +48,11 @@ public func setFileDescriptorHardLimit(_ count: Int) throws {
     #if os(macOS)
     let rlimit_nofile = RLIMIT_NOFILE
     #elseif os(Linux)
+    #if canImport(Glibc)
     let rlimit_nofile = __rlimit_resource_t(RLIMIT_NOFILE.rawValue)
+    #elseif canImport(Musl)
+    let rlimit_nofile = RLIMIT_NOFILE
+    #endif
     #endif
     let getRLimitResult = getrlimit(rlimit_nofile, &limit)
     if getRLimitResult != 0 {
@@ -62,7 +70,11 @@ public func getFileDescriptorSoftLimit() throws -> Int {
     #if os(macOS)
     let rlimit_nofile = RLIMIT_NOFILE
     #elseif os(Linux)
+    #if canImport(Glibc)
     let rlimit_nofile = __rlimit_resource_t(RLIMIT_NOFILE.rawValue)
+    #elseif canImport(Musl)
+    let rlimit_nofile = RLIMIT_NOFILE
+    #endif
     #endif
     let getRLimitResult = getrlimit(rlimit_nofile, &limit)
     if getRLimitResult != 0 {
@@ -76,7 +88,11 @@ public func getFileDescriptorHardLimit() throws -> Int {
     #if os(macOS)
     let rlimit_nofile = RLIMIT_NOFILE
     #elseif os(Linux)
+    #if canImport(Glibc)
     let rlimit_nofile = __rlimit_resource_t(RLIMIT_NOFILE.rawValue)
+    #elseif canImport(Musl)
+    let rlimit_nofile = RLIMIT_NOFILE
+    #endif
     #endif
     let getRLimitResult = getrlimit(rlimit_nofile, &limit)
     if getRLimitResult != 0 {

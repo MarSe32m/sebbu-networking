@@ -1,9 +1,25 @@
 import SebbuCLibUV
 
+#if os(macOS) || os(iOS)
+@usableFromInline
+typealias _uv_thread_t = uv_thread_t
+#elseif os(Linux)
+#if canImport(Glibc)
+@usableFromInline
+typealias _uv_thread_t = uv_thread_t
+#elseif canImport(Musl)
+@usableFromInline
+typealias _uv_thread_t = uv_thread_t?
+#endif
+#elseif os(Windows)
+@usableFromInline
+typealias _uv_thread_t = uv_thread_t?
+#endif
+
 //TODO: Consider moving this a sebbu-concurrency or sebbu-ts-ds
 public final class Thread {
     @usableFromInline
-    internal let tid: UnsafeMutablePointer<uv_thread_t?> = .allocate(capacity: 1)
+    internal let tid: UnsafeMutablePointer<_uv_thread_t> = .allocate(capacity: 1)
 
     public let procedure: () -> Void
 
@@ -23,7 +39,11 @@ public final class Thread {
     }
 
     public func setPriority(_ priority: Priority) {
+        #if os(Windows)
         let err = uv_thread_setpriority(tid, numericCast(priority.uvPriority))
+        #else
+        let err = uv_thread_setpriority(tid.pointee, numericCast(priority.uvPriority))
+        #endif
         debugOnly {
             print("Failed to set thread priority with error:", mapError(err))
         }
