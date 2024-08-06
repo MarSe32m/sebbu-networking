@@ -3,102 +3,109 @@ import SebbuNetworking
 
 final class SebbuNetworkingTCPTests: XCTestCase {
     func testTCPEchoServerClient() throws {
-        throw XCTSkip("TODO: Implement")
+        throw XCTSkip("TODO: This seems to hang on release build tests")
         let loop = EventLoop.default
-        let bindIP = IPv4Address.create(host: "0.0.0.0", port: 25566)!
+        let port = Int.random(in: 2500...50000)
+        let bindIP = IPv4Address.create(host: "127.0.0.1", port: port)!
         let bindAddress = IPAddress.v4(bindIP)
-        let remoteIP = IPv4Address.create(host: "127.0.0.1", port: 25566)!
+        let remoteIP = IPv4Address.create(host: "127.0.0.1", port: port)!
         let remoteAddress = IPAddress.v4(remoteIP)
 
         var clients: [TCPClientChannel] = []
         let server = TCPServerChannel(loop: loop)
-        try! server.bind(address: bindAddress)
-        print(server.state)
-        try! server.listen()
-        print(server.state)
+        try server.bind(address: bindAddress)
+        XCTAssertEqual(server.state, .bound)
+        try server.listen()
+        XCTAssertEqual(server.state, .listening)
 
-        var client: TCPClientChannel? = TCPClientChannel(loop: loop)
-        try! client!.connect(remoteAddress: remoteAddress)
-        print(client!.state)
-        
-        while let _client = client {
+        let client: TCPClientChannel = TCPClientChannel(loop: loop)
+        try client.connect(remoteAddress: remoteAddress)
+
+        for _ in 0..<10 where client.state != .connected {
             loop.run(.nowait)
-            while let client = server.receive() {
-                clients.append(client)
-            }
-            clients.removeAll { 
-                if $0.state == .closed {
-                    print("A client closed")
-                    return true
-                }
-                return false
-            }
+            Thread.sleep(1000)
+        }
+        XCTAssertEqual(client.state, .connected)
+
+        var iteration = 0
+        let targetBytesToReceiveAndSend = 1024 * 1024
+        var bytesReceived = 0
+        var bytesSent = 0
+        while bytesReceived < targetBytesToReceiveAndSend && iteration < 2 * 1024 {
+            iteration += 1
+            loop.run(.nowait)
+            while let client = server.receive() { clients.append(client) }
+
             for client in clients {
                 while let bytes = client.receive() {
-                    try! client.send(bytes)
+                    try client.send(bytes)
                 }
             }
-            switch _client.state {
-                case .connected:
-                    while let bytes = _client.receive() {
-                        print("Received data from server:", bytes)
-                    }
-                    let data = (0..<5).map {_ in UInt8.random(in: 0...1)}
-                    if data == [0, 0, 0, 0, 0] {
-                        _client.close()
-                    } else {
-                        try! _client.send(data)
-                    }
-                case .disconnected: break
-                case .closed: client = nil
+            while let bytes = client.receive() {
+                bytesReceived += bytes.count
             }
-            Thread.sleep(forTimeInterval: 0.1)
+            if bytesSent < targetBytesToReceiveAndSend {
+                let data: [UInt8] = (0..<1024 * 2).map { _ in .random(in: .min ... .max)}
+                try client.send(data)
+                bytesSent += data.count
+            }
+            Thread.sleep(1)
         }
+        XCTAssertEqual(bytesReceived, targetBytesToReceiveAndSend)
+        server.close()
+        client.close()
     }
 
     func testAsyncTCPEchoServerClient() async throws {
-        throw XCTSkip("TODO: Implement")
+        throw XCTSkip("TODO: This seems to hang on release build tests")
         let loop = EventLoop.default
-        Thread.detachNewThread { while true { loop.run() } }
-        let bindIP = IPv4Address.create(host: "0.0.0.0", port: 25566)!
+        let _ = Thread { while true { loop.run() } }
+        let port = Int.random(in: 2500...50000)
+        let bindIP = IPv4Address.create(host: "127.0.0.1", port: port)!
         let bindAddress = IPAddress.v4(bindIP)
-        let remoteIP = IPv4Address.create(host: "127.0.0.1", port: 25566)!
+        let remoteIP = IPv4Address.create(host: "127.0.0.1", port: port)!
         let remoteAddress = IPAddress.v4(remoteIP)
 
         let server = await AsyncTCPServerChannel(loop: loop)
         try await server.bind(address: bindAddress)
         try await server.listen()
         Task.detached {
-            try await withThrowingDiscardingTaskGroup { group in 
+            await withThrowingTaskGroup(of: Void.self) { group in 
                 for await client in server {
                     group.addTask {
                         for await data in client {
                             try await client.send(data)
                         }
-                        print("Client finished")
                     }
                 }
             }
         }
         
-        while true {
-            let client = await AsyncTCPClientChannel(loop: loop)
-            try await client.connect(remoteAddress: remoteAddress)
-            Task.detached {
-                for await data in client {
-                    print("Received data from server:", data)
-                }
-                print("Done receiving")
+        let client = await AsyncTCPClientChannel(loop: loop)
+        try await client.connect(remoteAddress: remoteAddress)
+        let targetBytes = 1024 * 1024
+        Task.detached {
+            var bytesSent = 0
+            for nextBytesSent in stride(from: 0, through: targetBytes, by: 256) {
+                let diff = nextBytesSent - bytesSent
+                bytesSent = nextBytesSent
+                if diff == 0 { continue }
+                let data: [UInt8] = (0..<diff).map {_ in .random(in: .min ... .max) }     
+                try await client.send(data)
             }
-            print("Connected")
-            while let line = readLine() {
-                if line == "quit" { 
-                    client.close()
-                    break
-                }
-                let bytes = [UInt8](line.utf8)
-                try await client.send(bytes)
-            }
+            try await Task.sleep(nanoseconds: 1_000_000_000)
         }
+        async let _ = { 
+            try await Task.sleep(nanoseconds: 30_000_000_000)
+            XCTFail("Timed out")
+        }()
+        var bytesReceived = 0
+        for await data in client {
+            bytesReceived += data.count
+            if bytesReceived >= targetBytes { break }
+        }
+        XCTAssertEqual(bytesReceived, targetBytes)
+        client.close()
+        server.close()
     }
 }
