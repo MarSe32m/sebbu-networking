@@ -18,8 +18,6 @@ jobs:
          #TODO: Add 6.0 release and remove older
          #- tag: 6.0-RELEASE
          #  branch: swift-6.0-release
-         - tag: DEVELOPMENT-SNAPSHOT-2023-07-10-a
-           branch: development
            
     steps:
     - uses: compnerd/gha-setup-swift@main
