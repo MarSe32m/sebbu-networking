@@ -12,7 +12,7 @@ let package = Package(
             targets: ["SebbuNetworking"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/MarSe32m/sebbu-c-libuv.git", branch: "main"),
+        .package(url: "https://github.com/MarSe32m/sebbu-c-libuv.git", from: "1.48.0"),
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.2"),
         .package(url: "https://github.com/apple/swift-atomics.git", from: "1.2.0")
     ],

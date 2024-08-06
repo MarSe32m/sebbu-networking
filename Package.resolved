@@ -5,8 +5,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/MarSe32m/sebbu-c-libuv.git",
       "state" : {
-        "branch" : "main",
-        "revision" : "03b47ea580fda4c62ccfd03bd4392a1d6c7031bd"
+        "revision" : "25cb76606cfc2eb4ad65206239177692c6614768",
+        "version" : "1.48.0"
       }
     },
     {
