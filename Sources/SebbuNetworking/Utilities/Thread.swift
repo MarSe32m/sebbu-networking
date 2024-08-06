@@ -2,7 +2,7 @@ import SebbuCLibUV
 
 #if os(macOS) || os(iOS)
 @usableFromInline
-typealias _uv_thread_t = uv_thread_t
+typealias _uv_thread_t = uv_thread_t?
 #elseif os(Linux)
 #if canImport(Glibc)
 @usableFromInline
