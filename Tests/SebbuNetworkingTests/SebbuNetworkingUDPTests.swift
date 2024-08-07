@@ -76,5 +76,6 @@ final class SebbuNetworkingUDPTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(bytesReceived, targetBytes)
         serverChannel.close()
         clientChannel.close()
+        loop.run(.nowait)
     }
 }

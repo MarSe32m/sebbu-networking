@@ -3,8 +3,8 @@ import SebbuNetworking
 
 final class SebbuNetworkingTCPTests: XCTestCase {
     func testTCPEchoServerClient() throws {
-        throw XCTSkip("TODO: This seems to hang on release build tests")
-        let loop = EventLoop.default
+        //throw XCTSkip("TODO: This seems to hang on release build tests")
+        let loop = EventLoop()
         let port = Int.random(in: 2500...50000)
         let bindIP = IPv4Address.create(host: "127.0.0.1", port: port)!
         let bindAddress = IPAddress.v4(bindIP)
@@ -54,11 +54,12 @@ final class SebbuNetworkingTCPTests: XCTestCase {
         XCTAssertEqual(bytesReceived, targetBytesToReceiveAndSend)
         server.close()
         client.close()
+        loop.run(.nowait)
     }
 
     func testAsyncTCPEchoServerClient() async throws {
-        throw XCTSkip("TODO: This seems to hang on release build tests")
-        let loop = EventLoop.default
+        //throw XCTSkip("TODO: This seems to hang on release build tests")
+        let loop = EventLoop()
         let _ = Thread { while true { loop.run() } }
         let port = Int.random(in: 2500...50000)
         let bindIP = IPv4Address.create(host: "127.0.0.1", port: port)!
@@ -107,5 +108,6 @@ final class SebbuNetworkingTCPTests: XCTestCase {
         XCTAssertEqual(bytesReceived, targetBytes)
         client.close()
         server.close()
+        try await Task.sleep(for: .milliseconds(150))
     }
 }

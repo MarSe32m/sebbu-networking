@@ -226,33 +226,36 @@ public final class TCPClientChannel: EventLoopBound {
     }
 
     internal func close(deallocate: Bool) {
-        context.pointee.state = .closed
         let handle = handle
         let context = context
-        let isClosed = handle.withMemoryRebound(to: uv_handle_t.self, capacity: 1) { uv_is_closing($0) != 0 }
-        handle.withMemoryRebound(to: uv_handle_t.self, capacity: 1) { handle in 
-            switch (isClosed, deallocate) {
-                case (true, true):
-                    handle.deallocate()
-                case (true, false):
-                    break
-                case (false, true):
-                    uv_close(handle) { 
-                        $0?.deallocate()
-                    }
-                case (false, false):
-                    uv_close(handle) { _ in }
+        eventLoop.execute {
+            context.pointee.state = .closed
+            handle.withMemoryRebound(to: uv_handle_t.self, capacity: 1) { handle in 
+                let isClosed = uv_is_closing(handle) != 0
+                switch (isClosed, deallocate) {
+                    case (true, true):
+                        handle.deallocate()
+                    case (true, false):
+                        break
+                    case (false, true):
+                        uv_close(handle) { 
+                            $0?.deallocate()
+                        }
+                    case (false, false):
+                        uv_close(handle) { _ in }
+                }
             }
-        }
-        context.pointee.triggerOnClose()
-        if deallocate {
-            context.deinitialize(count: 1)
-            context.deallocate()
+            context.pointee.triggerOnClose()
+            if deallocate {
+                context.deinitialize(count: 1)
+                context.deallocate()
+            }    
         }
     }
 
     deinit {
         close(deallocate: true)
+        eventLoop.run(.nowait)
     }
 
     internal func setupReceive() {
@@ -420,28 +423,33 @@ public final class TCPServerChannel: EventLoopBound {
     }
 
     internal func close(deallocating: Bool) {
-        context.pointee.state = .closed
-        handle.withMemoryRebound(to: uv_handle_t.self, capacity: 1) { handle in 
-            let alreadyClosed = uv_is_closing(handle) != 0
-            switch (alreadyClosed, deallocating) {
-                case (true, true):
-                    handle.deallocate()
-                case (true, false):
-                    break
-                case (false, true):
-                    uv_close(handle) { $0?.deallocate() }
-                case (false, false):
-                    uv_close(handle) { _ in }
+        let handle = handle
+        let context = context
+        eventLoop.execute {
+            context.pointee.state = .closed
+            handle.withMemoryRebound(to: uv_handle_t.self, capacity: 1) { handle in 
+                let isClosed = uv_is_closing(handle) != 0
+                switch (isClosed, deallocating) {
+                    case (true, true):
+                        handle.deallocate()
+                    case (true, false):
+                        break
+                    case (false, true):
+                        uv_close(handle) { $0?.deallocate() }
+                    case (false, false):
+                        uv_close(handle) { _ in }
+                }
             }
-        }
-        context.pointee.triggerOnClose()
-        if deallocating {
-            context.deinitialize(count: 1)
-            context.deallocate()
+            context.pointee.triggerOnClose()
+            if deallocating {
+                context.deinitialize(count: 1)
+                context.deallocate()
+            }
         }
     }
 
     deinit {
         close(deallocating: true)
+        eventLoop.run(.nowait)
     }
 }

@@ -82,6 +82,9 @@ public final class EventLoop {
     @usableFromInline
     internal var workQueue: [() -> Void] = []
 
+    @usableFromInline
+    internal let running: ManagedAtomic<Bool> = .init(false)
+
     public convenience init(allocator: Allocator = MallocAllocator()) {
         self.init(_type: .instance, allocator: allocator)
     }
@@ -104,6 +107,8 @@ public final class EventLoop {
     }
 
     public func run(_ mode: RunMode = .default) {
+        if running.exchange(true, ordering: .sequentiallyConsistent) { return }
+        defer { running.store(false, ordering: .sequentiallyConsistent) }
         _thread = uv_thread_self()
         defer { _thread = nil }
         switch mode {

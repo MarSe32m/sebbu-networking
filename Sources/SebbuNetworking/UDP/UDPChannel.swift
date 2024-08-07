@@ -212,27 +212,34 @@ public final class UDPChannel: EventLoopBound {
     }
 
     internal func close(deallocating: Bool) {
-        handle.withMemoryRebound(to: uv_handle_t.self, capacity: 1) { handle in 
-            switch (isClosed, deallocating) {
-                case (true, true):
-                    handle.deallocate()
-                case (true, false):
-                    break
-                case (false, true):
-                    uv_close(handle) { $0?.deallocate() }
-                case (false, false):
-                    uv_close(handle) { _ in }
+        let handle = handle
+        let context = context
+        eventLoop.execute {
+            handle.withMemoryRebound(to: uv_handle_t.self, capacity: 1) { handle in 
+                let isClosed = uv_is_closing(handle) != 0
+                switch (isClosed, deallocating) {
+                    case (true, true):
+                        handle.deallocate()
+                    case (true, false):
+                        break
+                    case (false, true):
+                        uv_close(handle) { $0?.deallocate() }
+                    case (false, false):
+                        uv_close(handle) { _ in }
+                }
+            }
+            context.pointee.triggerOnClose()
+            if deallocating {
+                context.deinitialize(count: 1)
+                context.deallocate()
             }
         }
-        context.pointee.triggerOnClose()
-        if deallocating {
-            context.deinitialize(count: 1)
-            context.deallocate()
-        }
+        
     }
 
     deinit {
         close(deallocating: true)
+        eventLoop.run(.nowait)
     }
 }
 
@@ -425,27 +432,33 @@ public final class UDPConnectedChannel: EventLoopBound {
     }
 
     internal func close(deallocating: Bool) {
-        handle.withMemoryRebound(to: uv_handle_t.self, capacity: 1) { handle in 
-            switch (isClosed, deallocating) {
-                case (true, true):
-                    handle.deallocate()
-                case (true, false):
-                    break
-                case (false, true):
-                    uv_close(handle) { $0?.deallocate() }
-                case (false, false):
-                    uv_close(handle) { _ in }
+        let handle = handle
+        let context = context
+        eventLoop.execute {
+            handle.withMemoryRebound(to: uv_handle_t.self, capacity: 1) { handle in 
+                let isClosed = uv_is_closing(handle) != 0
+                switch (isClosed, deallocating) {
+                    case (true, true):
+                        handle.deallocate()
+                    case (true, false):
+                        break
+                    case (false, true):
+                        uv_close(handle) { $0?.deallocate() }
+                    case (false, false):
+                        uv_close(handle) { _ in }
+                }
             }
-        }
-        context.pointee.triggerOnClose()
-        if deallocating {
-            context.deinitialize(count: 1)
-            context.deallocate()
+            context.pointee.triggerOnClose()
+            if deallocating {
+                context.deinitialize(count: 1)
+                context.deallocate()
+            }
         }
     }
 
     deinit {
         close(deallocating: true)
+        eventLoop.run(.nowait)
     }
 }
 
