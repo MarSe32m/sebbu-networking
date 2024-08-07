@@ -77,6 +77,16 @@ public enum IPAddress: CustomStringConvertible {
         }
     }
 
+    public init?(host: String, port: Int) {
+        if let ip = IPv4Address.create(host: host, port: port) {
+            self = .v4(ip)
+        } else if let ip = IPv6Address.create(host: host, port: port) {
+            self = .v6(ip)
+        } else {
+            return nil
+        }
+    }
+
     public var description: String {
         let ip = withSocketHandle { sockAddrPtr in
             return String(unsafeUninitializedCapacity: 46) { buffer in 
