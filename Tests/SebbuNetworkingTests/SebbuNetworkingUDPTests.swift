@@ -43,8 +43,8 @@ final class SebbuNetworkingUDPTests: XCTestCase {
         }
         let bytesReceived = await counter.byteCount
         XCTAssertGreaterThanOrEqual(bytesReceived, targetBytes)
-        server.close()
-        client.close()
+        //server.close()
+        //client.close()
     }
 
     func testUDPEchoServerClient() throws {
@@ -74,8 +74,8 @@ final class SebbuNetworkingUDPTests: XCTestCase {
             try clientChannel.send(data)
         }
         XCTAssertGreaterThanOrEqual(bytesReceived, targetBytes)
-        serverChannel.close()
-        clientChannel.close()
+        //serverChannel.close()
+        //clientChannel.close()
         loop.run(.nowait)
     }
 }
