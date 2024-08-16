@@ -14,4 +14,16 @@ final class SebbuNetworkingExecuteTests: XCTestCase {
             XCTAssertEqual(i, j)
         }
     }
+
+    func testSchedule() {
+        let loop = EventLoop()
+        let _ = Thread { while true { loop.run() } }
+        var iteration = 0
+        loop.schedule(timeout: .seconds(1), repeating: .milliseconds(16)) { shouldStop in 
+            iteration += 1
+            if iteration == 60 { shouldStop = true }
+        }
+        Thread.sleep(3000)
+        XCTAssertEqual(iteration, 60)
+    }
 }

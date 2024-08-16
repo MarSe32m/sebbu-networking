@@ -145,6 +145,33 @@ public final class EventLoop {
         }))
     }
 
+    public func schedule(timeout: Duration, repeating: Duration? = nil, _ callback: @escaping (_ stop: inout Bool) -> Void) {
+        execute {
+            let timeout = UInt64(timeout / .milliseconds(1))
+            let repeating = repeating != nil ? UInt64(repeating! / .milliseconds(1)) : 0
+            let timer = UnsafeMutablePointer<uv_timer_t>.allocate(capacity: 1)
+            uv_timer_init(self._handle, timer)
+            let context = UnsafeMutablePointer<TimerContext>.allocate(capacity: 1)
+            context.initialize(to: .init(repeating: repeating > 0, callback: callback))
+            timer.pointee.data = .init(context)
+            uv_timer_start(timer, { timer in 
+                guard let context = timer?.pointee.data.assumingMemoryBound(to: TimerContext.self) else { fatalError()}
+                var shouldStop = false
+                context.pointee.callback(&shouldStop)
+                if shouldStop || !context.pointee.repeating {
+                    uv_timer_stop(timer)
+                    timer?.withMemoryRebound(to: uv_handle_t.self, capacity: 1) { handle in 
+                        uv_close(handle) { handle in 
+                            handle?.deallocate()
+                        }
+                    }
+                    context.deinitialize(count: 1)
+                    context.deallocate()
+                }
+            }, timeout, repeating)
+        }
+    }
+
     public func execute(_ body: @escaping () -> Void) {
         //TODO: Use MPSCQueue
         workQueueLock.lock()
@@ -255,4 +282,13 @@ public final class EventLoop {
 internal struct CallbackContext {
     @usableFromInline
     internal let callback: () -> Void
+}
+
+@usableFromInline
+internal struct TimerContext {
+    @usableFromInline
+    internal let repeating: Bool
+
+    @usableFromInline
+    internal let callback: (inout Bool) -> Void
 }
