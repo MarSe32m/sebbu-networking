@@ -230,6 +230,9 @@ public final class TCPClientChannel: EventLoopBound {
         let context = context
         eventLoop.execute {
             context.pointee.state = .closed
+            handle.withMemoryRebound(to: uv_stream_t.self, capacity: 1) { stream in 
+                let _ = uv_read_stop(stream)
+            }
             handle.withMemoryRebound(to: uv_handle_t.self, capacity: 1) { handle in 
                 let isClosed = uv_is_closing(handle) != 0
                 switch (isClosed, deallocate) {
@@ -284,7 +287,7 @@ public final class TCPClientChannel: EventLoopBound {
                     onReceive(bytesArray)
                 } else {
                     if nRead == numericCast(UV_EOF.rawValue) {
-                        print("End of file reached")
+                        //print("End of file reached")
                     }
                     uv_read_stop(stream)
                     stream.withMemoryRebound(to: uv_handle_t.self, capacity: 1) { handle in 

@@ -58,7 +58,9 @@ final class SebbuNetworkingTCPTests: XCTestCase {
     }
 
     func testAsyncTCPEchoServerClient() async throws {
-        //throw XCTSkip("TODO: This seems to hang on release build tests")
+        #if os(Windows)
+        throw XCTSkip("Skipped until https://github.com/swiftlang/swift/issues/75942 is fixed")
+        #endif
         let loop = EventLoop()
         let _ = Thread { while true { loop.run() } }
         let port = Int.random(in: 2500...50000)
