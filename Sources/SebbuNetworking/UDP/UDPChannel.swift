@@ -14,6 +14,7 @@ public final class UDPChannel: EventLoopBound {
     @usableFromInline
     internal let context: UnsafeMutablePointer<UDPChannelContext>
 
+    //TODO: Use SPSCQueue
     @usableFromInline
     internal var packetQueue: Deque<UDPChannelPacket> = Deque()
 
@@ -257,6 +258,7 @@ public final class UDPConnectedChannel: EventLoopBound {
     @usableFromInline
     internal let context: UnsafeMutablePointer<UDPChannelContext>
 
+    //TODO: Use SPSCQueue
     @usableFromInline
     internal var packetQueue: Deque<UDPChannelPacket> = Deque()
 

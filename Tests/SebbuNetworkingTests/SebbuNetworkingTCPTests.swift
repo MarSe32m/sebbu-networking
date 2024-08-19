@@ -112,4 +112,42 @@ final class SebbuNetworkingTCPTests: XCTestCase {
         server.close()
         try await Task.sleep(for: .milliseconds(150))
     }
+
+    func testTCPClose() throws {
+        let loop = EventLoop()
+        let server = TCPServerChannel(loop: loop)
+        let client = TCPClientChannel(loop: loop)
+        let address = IPAddress(host: "127.0.0.1", port: 19000)!
+        try server.bind(address: address)
+        try server.listen()
+        try client.connect(remoteAddress: address)
+        for _ in 0..<100 {
+            loop.run(.nowait)
+        }
+        for _ in 0..<100 {
+            server.close()
+            client.close()
+        }
+        for _ in 0..<100 {
+            loop.run(.nowait)
+        }
+    }
+
+    func testAsyncTCPClose() async throws {
+        #if os(Windows)
+        throw XCTSkip("Skipped until https://github.com/swiftlang/swift/issues/75942 is fixed")
+        #endif
+        let loop = EventLoop()
+        _ = Thread { while true { loop.run() } }
+        let server = await AsyncTCPServerChannel(loop: loop)
+        let client = await AsyncTCPClientChannel(loop: loop)
+        let address = IPAddress(host: "127.0.0.1", port: 19000)!
+        try await server.bind(address: address)
+        try await server.listen()
+        try await client.connect(remoteAddress: address)
+        for _ in 0..<100 {
+            server.close()
+            client.close()
+        }
+    }
 }

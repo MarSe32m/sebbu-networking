@@ -78,4 +78,37 @@ final class SebbuNetworkingUDPTests: XCTestCase {
         //clientChannel.close()
         loop.run(.nowait)
     }
+
+    func testUDPClose() throws {
+        let loop = EventLoop()
+        let channel = UDPChannel(loop: loop)
+        let address = IPAddress(host: "127.0.0.1", port: 19000)!
+        try channel.bind(address: address)
+        let channelConnected = UDPConnectedChannel(loop: loop)
+        try channelConnected.connect(remoteAddress: address)
+        for _ in 0..<100 {
+            loop.run(.nowait)
+        }
+        for _ in 0..<100 {
+            channel.close()
+            channelConnected.close()
+        }
+        for _ in 0..<100 {
+            loop.run(.nowait)
+        }
+    }
+
+    func testAsyncUDPClose() async throws {
+        let loop = EventLoop()
+        _ = Thread { while true { loop.run() } }
+        let channel = await AsyncUDPChannel(loop: loop)
+        let address = IPAddress(host: "127.0.0.1", port: 19000)!
+        try await channel.bind(address: address)
+        let channelConnected = await AsyncUDPConnectedChannel(loop: loop)
+        try await channelConnected.connect(remoteAddress: address)
+        for _ in 0..<100 {
+            channel.close()
+            channelConnected.close()
+        }
+    }
 }

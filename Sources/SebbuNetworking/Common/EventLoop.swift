@@ -104,6 +104,9 @@ public final class EventLoop {
         registerPrepareAndCheckHandles()
         registerNotification()
         registerWorkQueueDraining()
+        if _type == .global {
+            _ = Thread { self.run(.default) }
+        }
     }
 
     public func run(_ mode: RunMode = .default) {
@@ -113,8 +116,7 @@ public final class EventLoop {
         defer { _thread = nil }
         switch mode {
             case .default:
-                uv_run(_handle, UV_RUN_ONCE)
-                //uv_run(_handle, UV_RUN_DEFAULT)
+                uv_run(_handle, UV_RUN_DEFAULT)
             case .once:
                 uv_run(_handle, UV_RUN_ONCE)
             case .nowait:

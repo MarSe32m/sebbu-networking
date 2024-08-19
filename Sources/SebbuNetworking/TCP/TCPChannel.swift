@@ -17,7 +17,8 @@ public final class TCPClientChannel: EventLoopBound {
 
     @usableFromInline
     internal let context: UnsafeMutablePointer<TCPClientChannelContext>
-
+    
+    //TODO: Use SPSCQueue
     @usableFromInline
     internal var packets: Deque<[UInt8]> = Deque()
 
@@ -324,6 +325,7 @@ public final class TCPServerChannel: EventLoopBound {
     @usableFromInline
     internal let context: UnsafeMutablePointer<TCPServerChannelContext>
 
+    //TODO: Use SPSCQueue
     @usableFromInline
     internal var clients: Deque<TCPClientChannel> = Deque()
 
