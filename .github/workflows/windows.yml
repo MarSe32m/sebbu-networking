@@ -13,11 +13,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-         - tag: 5.10.1-RELEASE
-           branch: swift-5.10.1-release
-         #TODO: Add 6.0 release and remove older
-         #- tag: 6.0-RELEASE
-         #  branch: swift-6.0-release
+         - tag: 6.0-RELEASE
+           branch: swift-6.0-release
            
     steps:
     - uses: compnerd/gha-setup-swift@main
