@@ -19,53 +19,50 @@ public struct NetworkUtils {
     private struct HTTPBinJson: Codable {
         let origin: String
     }
-    
+
     private static let ipAddressProviders = ["https://api64.ipify.org/?format=json", 
                                              "https://api.ipify.org/?format=json",
                                              "http://myexternalip.com/json"]
     
-    public static let publicIP: String? = {
-        for address in ipAddressProviders {
-            guard let url = URL(string: address) else {
-                continue
-            }
-
+    static let publicIPTask: Task<String?, Never> = Task<String?, Never> {
+        let providers = NetworkUtils.ipAddressProviders
+        for address in providers {
+            guard let url = URL(string: address) else { continue }
             do {
-                let data = try Data(contentsOf: url)
+                let (data, _) = try await URLSession.shared.data(for: .init(url: url))
                 let ipAddress = try JSONDecoder().decode(IpifyJson.self, from: data).ip
-                if ipAddress.isIpAddress {
-                    return ipAddress
-                }
+                if ipAddress.isIpAddress { return ipAddress }
             } catch let error {
-                print("Error retreiving IP address from: \(address)")
+                print("Error retrieving IP address from: \(address)")
                 print(error)
             }
         }
-        
         if let url = URL(string: "http://checkip.amazonaws.com/") {
             do {
-                let ipAddress = try String(contentsOf: url, encoding: .utf8)
-                if ipAddress.isIpAddress {
-                    return ipAddress
-                }
-            } catch let error {
+                let (data, _) = try await URLSession.shared.data(for: .init(url: url))
+                let ipAddress = String(decoding: data, as: UTF8.self)
+                if ipAddress.isIpAddress { return ipAddress}
+            } catch {
                 print("Error retreiving IP address from: \(url)")
                 print(error)
             }
         }
-        
-        if let url = URL(string: "http://httbin.org/ip") {
+        if let url = URL(string: "http://httpbin.org/ip") {
             do {
-                let data = try Data(contentsOf: url)
+                let (data, _) = try await URLSession.shared.data(for: .init(url: url))
                 let ipAddress = try JSONDecoder().decode(HTTPBinJson.self, from: data).origin
-                if ipAddress.isIpAddress {
-                    return ipAddress
-                }
-            } catch let error {
-                print("Error retrieving IP address from: \(url)")
+                if ipAddress.isIpAddress { return ipAddress }
+            } catch {
+                print("Error retreiving IP address from: \(url)")
                 print(error)
             }
         }
         return nil
-    }()
+    }
+
+    public static var publicIP: String? {
+        get async {
+            await publicIPTask.value
+        }
+    }
 }
