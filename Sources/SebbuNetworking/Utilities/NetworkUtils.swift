@@ -44,7 +44,7 @@ public struct NetworkUtils {
         
         if let url = URL(string: "http://checkip.amazonaws.com/") {
             do {
-                let ipAddress = try String(contentsOf: url)
+                let ipAddress = try String(contentsOf: url, encoding: .utf8)
                 if ipAddress.isIpAddress {
                     return ipAddress
                 }

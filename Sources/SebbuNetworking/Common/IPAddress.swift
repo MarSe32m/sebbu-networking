@@ -11,7 +11,7 @@ import ucrt
 import Darwin
 #endif
 
-public final class IPv4Address {
+public final class IPv4Address: @unchecked Sendable {
     @usableFromInline
     internal var address: sockaddr_in
 
@@ -37,7 +37,7 @@ public final class IPv4Address {
     }
 }
 
-public final class IPv6Address {
+public final class IPv6Address: @unchecked Sendable {
     @usableFromInline
     internal var address: sockaddr_in6
 
@@ -63,7 +63,7 @@ public final class IPv6Address {
     }
 }
 
-public enum IPAddress: CustomStringConvertible {
+public enum IPAddress: CustomStringConvertible, Sendable {
     case v4(IPv4Address)
     case v6(IPv6Address)
 

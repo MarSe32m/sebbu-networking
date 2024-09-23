@@ -1,6 +1,6 @@
 import SebbuCLibUV
 
-public struct TCPChannelFlags: OptionSet {
+public struct TCPChannelFlags: OptionSet, Sendable {
     public typealias RawValue = UInt32
 
     public let rawValue: UInt32

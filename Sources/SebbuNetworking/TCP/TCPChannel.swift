@@ -1,7 +1,7 @@
 import SebbuCLibUV
 import DequeModule
 
-public final class TCPClientChannel: EventLoopBound {
+public final class TCPClientChannel: EventLoopBound, @unchecked Sendable {
     public let eventLoop: EventLoop
 
     public var isClosed: Bool {
@@ -308,7 +308,7 @@ public final class TCPClientChannel: EventLoopBound {
     }
 }
 
-public final class TCPServerChannel: EventLoopBound {
+public final class TCPServerChannel: EventLoopBound, @unchecked Sendable {
     public let eventLoop: EventLoop
 
     public var isClosed: Bool {

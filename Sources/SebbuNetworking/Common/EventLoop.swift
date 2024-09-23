@@ -1,9 +1,7 @@
 import SebbuCLibUV
+import Synchronization
 
-//TODO: Remove once we have Atomic<> from standard library
-import Atomics
-
-public final class EventLoop {
+public final class EventLoop: @unchecked Sendable {
     @usableFromInline
     internal enum EventLoopType {
         case global
@@ -43,7 +41,7 @@ public final class EventLoop {
     }
 
     @usableFromInline
-    internal var callbackID: ManagedAtomic<Int> = .init(0)
+    internal let callbackID: Atomic<Int> = .init(0)
     
     @usableFromInline
     internal var beforeLoopTickCallbacks: [(id: Int, work: () -> Void)] = []
@@ -64,7 +62,7 @@ public final class EventLoop {
     internal let checkHandle = UnsafeMutablePointer<uv_check_t>.allocate(capacity: 1)
     
     @usableFromInline
-    internal let notificationCount: ManagedAtomic<Int> = .init(0)
+    internal let notificationCount: Atomic<Int> = .init(0)
     
     @usableFromInline
     internal let notificationHandle = UnsafeMutablePointer<uv_async_t>.allocate(capacity: 1)
@@ -83,7 +81,7 @@ public final class EventLoop {
     internal var workQueue: [() -> Void] = []
 
     @usableFromInline
-    internal let running: ManagedAtomic<Bool> = .init(false)
+    internal let running: Atomic<Bool> = .init(false)
 
     public convenience init(allocator: Allocator = MallocAllocator()) {
         self.init(_type: .instance, allocator: allocator)
@@ -129,12 +127,12 @@ public final class EventLoop {
     }
 
     public func notify() {
-        notificationCount.wrappingIncrement(ordering: .relaxed)
+        notificationCount.wrappingAdd(1, ordering: .relaxed)
         _notify()
     }
 
     private func registerWorkQueueDraining() {
-        let id = callbackID.wrappingIncrementThenLoad(ordering: .relaxed)
+        let (_, id) = callbackID.wrappingAdd(1, ordering: .relaxed)
         beforeLoopTickCallbacks.append((id, { [unowned(unsafe) self] in
             //TODO: Use MPSCQueue -> ditch the lock
             self.workQueueLock.lock()
@@ -183,7 +181,7 @@ public final class EventLoop {
     }
 
     public func registerAfterTickCallback(_ callback: @escaping () -> Void) -> Int {
-        let id = callbackID.wrappingIncrementThenLoad(ordering: .relaxed)
+        let (_, id) = callbackID.wrappingAdd(1, ordering: .relaxed)
         execute { self.afterLoopTickCallbacks.append((id, callback)) }
         return id
     }
@@ -193,7 +191,7 @@ public final class EventLoop {
     }
 
     public func registerBeforeTickCallback(_ callback: @escaping () -> Void) -> Int {
-        let id = callbackID.wrappingIncrementThenLoad(ordering: .relaxed)
+        let (_, id) = callbackID.wrappingAdd(1, ordering: .relaxed)
         execute { self.beforeLoopTickCallbacks.append((id, callback)) }
         return id
     }
@@ -252,7 +250,7 @@ public final class EventLoop {
         }
         notificationContext.initialize(to: .init(callback: { [weak self] in
             guard let self = self else { return }
-            if self.notificationCount.wrappingDecrementThenLoad(ordering: .relaxed) > 0 { self._notify() }
+            if self.notificationCount.wrappingAdd(1, ordering: .relaxed).newValue > 0 { self._notify() }
         }))
         notificationHandle.pointee.data = .init(notificationContext)
     }

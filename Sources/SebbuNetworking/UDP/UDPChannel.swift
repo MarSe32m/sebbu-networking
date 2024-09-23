@@ -1,7 +1,7 @@
 import SebbuCLibUV
 import DequeModule
 
-public final class UDPChannel: EventLoopBound {
+public final class UDPChannel: EventLoopBound, @unchecked Sendable {
     public let eventLoop: EventLoop
 
     public var isClosed: Bool {
@@ -245,7 +245,7 @@ public final class UDPChannel: EventLoopBound {
 }
 
 /// A connected UDPChannel
-public final class UDPConnectedChannel: EventLoopBound {
+public final class UDPConnectedChannel: EventLoopBound, @unchecked Sendable {
     public let eventLoop: EventLoop
 
     public var isClosed: Bool {

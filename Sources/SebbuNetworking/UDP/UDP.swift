@@ -1,6 +1,6 @@
 import SebbuCLibUV
 
-public struct UDPChannelFlags: OptionSet {
+public struct UDPChannelFlags: OptionSet, Sendable {
     public let rawValue: UInt32
 
     public init(rawValue: UInt32) {

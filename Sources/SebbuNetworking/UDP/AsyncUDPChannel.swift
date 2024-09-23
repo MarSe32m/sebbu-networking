@@ -1,4 +1,4 @@
-public final class AsyncUDPChannel {
+public final class AsyncUDPChannel: @unchecked Sendable {
     public var eventLoop: EventLoop {
         _channel.eventLoop
     }
@@ -85,7 +85,7 @@ extension AsyncUDPChannel: AsyncSequence {
     }
 }
 
-public final class AsyncUDPConnectedChannel {
+public final class AsyncUDPConnectedChannel: @unchecked Sendable {
     public var eventLoop: EventLoop {
         _channel.eventLoop
     }
